@@ -1,6 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js';
 
-// Handles desktop (mouse + keyboard) and VR (XR controller) input.
 export class InputManager {
   constructor(renderer, cameraRig, camera, scene) {
     this._renderer   = renderer;
@@ -8,14 +7,16 @@ export class InputManager {
     this._camera     = camera;
     this._scene      = scene;
 
-    // Desktop state
-    this.mouseLocked = false;
-    this._yaw        = 0;
-    this._pitch      = 0;
-    this._shotPending     = false;
-    this._abilityPending  = null;
+    this.mouseLocked     = false;
+    this._yaw            = 0;
+    this._pitch          = 0;
+    this._shotPending    = false;
+    this._abilityPending = null;
 
-    // VR state
+    // VR grip state (tracked per frame for isGrabbing())
+    this._gripLeft  = false;
+    this._gripRight = false;
+
     this._rightController = null;
     this._leftController  = null;
     this._triggerWas  = { left: false, right: false };
@@ -34,7 +35,6 @@ export class InputManager {
       this._pitch  = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, this._pitch));
     });
 
-    // Click: first click locks pointer, subsequent clicks shoot
     document.addEventListener('click', () => {
       if (!this.mouseLocked && window.game?.state === 'playing') {
         document.body.requestPointerLock();
@@ -63,7 +63,6 @@ export class InputManager {
   _setupVRControllers() {
     for (let i = 0; i < 2; i++) {
       const ctrl = this._renderer.xr.getController(i);
-      // Must be added to scene so WebXR can update its pose each frame.
       this._scene.add(ctrl);
 
       ctrl.addEventListener('connected', event => {
@@ -80,18 +79,15 @@ export class InputManager {
   }
 
   _addControllerVisual(ctrl) {
-    // Pointer ray line
     const geo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(0, 0, -1),
     ]);
-    const line = new THREE.Line(
-      geo,
+    const line = new THREE.Line(geo,
       new THREE.LineBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.45 })
     );
     ctrl.add(line);
 
-    // Simple box grip
     const grip = new THREE.Mesh(
       new THREE.BoxGeometry(0.055, 0.09, 0.11),
       new THREE.MeshLambertMaterial({ color: 0x2a2a2a })
@@ -102,7 +98,6 @@ export class InputManager {
   // ── Per-frame update ──────────────────────────────────────────
   update(dt, frame, vrMode) {
     if (!vrMode) {
-      // Apply mouse look to camera rig / camera
       this._cameraRig.rotation.y = this._yaw;
       this._camera.rotation.order = 'YXZ';
       this._camera.rotation.x = this._pitch;
@@ -115,23 +110,29 @@ export class InputManager {
     const session = this._renderer.xr.getSession();
     if (!session) return;
 
+    this._gripLeft  = false;
+    this._gripRight = false;
+
     for (const src of session.inputSources) {
       const gp   = src.gamepad;
       const hand = src.handedness;
       if (!gp) continue;
 
       if (hand === 'right') {
+        // Trigger → fire
         const trig = gp.buttons[0]?.value > 0.5;
         if (trig && !this._triggerWas.right) this._shotPending = true;
         this._triggerWas.right = trig;
+
+        // Grip → grab turret
+        if (gp.buttons[1]?.pressed) this._gripRight = true;
       }
 
       if (hand === 'left') {
-        // X (idx 4) → scan, Y (idx 5) → emp, grip/squeeze (idx 1) → turret
+        // X (idx 4) → scan,  Y (idx 5) → emp
         const map = [
-          { idx: 4, key: 'scan'   },
-          { idx: 5, key: 'emp'    },
-          { idx: 1, key: 'turret' },
+          { idx: 4, key: 'scan' },
+          { idx: 5, key: 'emp'  },
         ];
         for (const { idx, key } of map) {
           const pressed = gp.buttons[idx]?.pressed;
@@ -139,15 +140,22 @@ export class InputManager {
           if (pressed && !this._buttonWas[bKey]) this._abilityPending = key;
           this._buttonWas[bKey] = pressed;
         }
+
+        // Grip → grab turret
+        if (gp.buttons[1]?.pressed) this._gripLeft = true;
       }
     }
   }
 
-  // ── Consumed-once accessors (call once per frame) ─────────────
+  // ── Consumed-once accessors ───────────────────────────────────
   consumeShot() {
     const v = this._shotPending;
     this._shotPending = false;
     return v;
+  }
+
+  peekShot() {
+    return this._shotPending;
   }
 
   consumeAbility() {
@@ -156,7 +164,13 @@ export class InputManager {
     return v;
   }
 
-  // ── VR controller reference ───────────────────────────────────
+  // ── Grab state ────────────────────────────────────────────────
+  // Returns true if either VR grip button is pressed.
+  isGrabbing()      { return this._gripLeft || this._gripRight; }
+  isGrippingLeft()  { return this._gripLeft;  }
+  isGrippingRight() { return this._gripRight; }
+
+  // ── VR controller references ──────────────────────────────────
   getRightController() { return this._rightController; }
   getLeftController()  { return this._leftController;  }
 }

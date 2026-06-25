@@ -9,6 +9,7 @@ import { Turret }            from './turret.js';
 import { InputManager }      from './input.js';
 import { WaveManager }       from './waves.js';
 import { AbilitySystem }     from './abilities.js';
+import { AbilityConsole }   from './abilityConsole.js';
 
 export class Game {
   constructor() {
@@ -43,7 +44,7 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.2;
+    this.renderer.toneMappingExposure = 0.75;
     document.body.appendChild(this.renderer.domElement);
 
     document.getElementById('vr-button-container')
@@ -105,6 +106,8 @@ export class Game {
     this.abilitySystem = new AbilitySystem(
       this.scene, this.audio, this.particles
     );
+
+    this.abilityConsole = new AbilityConsole(this.cameraRig);
   }
 
   // ── Start / restart ───────────────────────────────────────────
@@ -177,8 +180,23 @@ export class Game {
     this.turret.update(dt, this.vrMode, this.input);
     this.ui.setAimOnTarget(this.turret.isAimingAtDrone(this.drones));
 
+    // ── Ability console (VR: hover + trigger to activate) ───────
+    let consoleKey = null;
+    if (this.vrMode) {
+      consoleKey = this.abilityConsole.update(
+        this.abilities,
+        this.input.getLeftController(),
+        this.input.getRightController(),
+        this.input.peekShot(),
+      );
+      if (consoleKey) {
+        this.input.consumeShot();   // eat the trigger press
+        this.useAbility(consoleKey);
+      }
+    }
+
     // ── Player shooting ──────────────────────────────────────
-    if (this.input.consumeShot()) {
+    if (!consoleKey && this.input.consumeShot()) {
       const shot = this.turret.fire(this.vrMode, this.audio);
       if (shot) {
         this.projectiles.firePlayer(shot.muzzlePos, shot.aimDir);

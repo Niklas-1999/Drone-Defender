@@ -5,41 +5,69 @@ export class SceneBuilder {
     this._scene = scene;
   }
 
-  // No longer returns a base core — environment only.
   build() {
-    this._addSkyAndFog();
+    this._addSky();
     this._addLighting();
     this._addGround();
-    this._addStars();
     this._addRocks();
     this._addDistantStructures();
     this._addBunker();
   }
 
-  _addSkyAndFog() {
-    this._scene.background = new THREE.Color(0x080614);
-    this._scene.fog = new THREE.FogExp2(0x0a0918, 0.013);
+  // ── Bright daytime sky ────────────────────────────────────────
+  _addSky() {
+    // Gradient sky dome via canvas texture (no external import needed)
+    const canvas = document.createElement('canvas');
+    canvas.width  = 2;
+    canvas.height = 256;
+    const ctx  = canvas.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0.00, '#0b2a6b');  // zenith – deep blue
+    grad.addColorStop(0.30, '#1565c0');  // upper sky
+    grad.addColorStop(0.60, '#42a5f5');  // mid sky
+    grad.addColorStop(0.80, '#90caf9');  // lower sky
+    grad.addColorStop(0.92, '#e3f2fd');  // near-horizon haze
+    grad.addColorStop(1.00, '#cfd8dc');  // horizon
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 2, 256);
+
+    const skyDome = new THREE.Mesh(
+      new THREE.SphereGeometry(400, 32, 16),
+      new THREE.MeshBasicMaterial({
+        map:  new THREE.CanvasTexture(canvas),
+        side: THREE.BackSide,
+      })
+    );
+    this._scene.add(skyDome);
+
+    // Light atmosphere haze
+    this._scene.fog = new THREE.FogExp2(0xc8e6f5, 0.005);
+    // Fallback background colour (seen if dome ever gaps)
+    this._scene.background = new THREE.Color(0x90caf9);
   }
 
+  // ── Bright outdoor lighting ───────────────────────────────────
   _addLighting() {
-    this._scene.add(new THREE.AmbientLight(0x111830, 0.6));
+    // Strong sky-reflected ambient
+    this._scene.add(new THREE.AmbientLight(0xcce8ff, 1.4));
 
-    const sun = new THREE.DirectionalLight(0xff7733, 1.8);
-    sun.position.set(60, 40, 30);
+    // Main sun – high afternoon position in front of player
+    const sun = new THREE.DirectionalLight(0xfff5c0, 3.0);
+    sun.position.set(80, 120, -60);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.far = 200;
-    [-80, 80].forEach(v => {
-      sun.shadow.camera.left = sun.shadow.camera.bottom = -80;
-      sun.shadow.camera.right = sun.shadow.camera.top = 80;
-    });
+    sun.shadow.camera.far  = 250;
+    sun.shadow.camera.left = sun.shadow.camera.bottom = -90;
+    sun.shadow.camera.right = sun.shadow.camera.top   =  90;
     this._scene.add(sun);
 
-    const fill = new THREE.DirectionalLight(0x334488, 0.4);
-    fill.position.set(-40, 20, -30);
-    this._scene.add(fill);
+    // Soft bounce light from ground
+    const bounce = new THREE.DirectionalLight(0xfff0d0, 0.6);
+    bounce.position.set(-40, -10, 20);
+    this._scene.add(bounce);
   }
 
+  // ── Sandy terrain ─────────────────────────────────────────────
   _addGround() {
     const geo = new THREE.PlaneGeometry(400, 400, 48, 48);
     const pos = geo.attributes.position;
@@ -47,42 +75,24 @@ export class SceneBuilder {
       const x = pos.getX(i), z = pos.getZ(i);
       if (Math.sqrt(x * x + z * z) > 8) {
         pos.setY(i,
-          (Math.sin(x * 0.18) + Math.cos(z * 0.22)) * 0.7
-          + (Math.random() - 0.5) * 1.0
+          (Math.sin(x * 0.18) + Math.cos(z * 0.22)) * 0.5
+          + (Math.random() - 0.5) * 0.8
         );
       }
     }
     geo.computeVertexNormals();
 
     const mesh = new THREE.Mesh(geo,
-      new THREE.MeshLambertMaterial({ color: 0x3b2416 })
+      new THREE.MeshLambertMaterial({ color: 0xc4a265 })  // sandy desert
     );
     mesh.rotation.x = -Math.PI / 2;
     mesh.receiveShadow = true;
     this._scene.add(mesh);
   }
 
-  _addStars() {
-    const verts = [];
-    for (let i = 0; i < 2500; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi   = Math.acos(2 * Math.random() - 1);
-      const r     = 240 + Math.random() * 80;
-      verts.push(
-        r * Math.sin(phi) * Math.cos(theta),
-        r * Math.cos(phi),
-        r * Math.sin(phi) * Math.sin(theta)
-      );
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-    this._scene.add(new THREE.Points(geo,
-      new THREE.PointsMaterial({ color: 0xffffff, size: 0.55 })
-    ));
-  }
-
+  // ── Desert rocks ──────────────────────────────────────────────
   _addRocks() {
-    const mat = new THREE.MeshLambertMaterial({ color: 0x4a3020 });
+    const mat = new THREE.MeshLambertMaterial({ color: 0x8d6e63 });
     const positions = [
       [18,12],[-22,16],[28,-18],[-14,-26],
       [32,6], [-38,-8],[10,34], [-10,-35],
@@ -100,45 +110,38 @@ export class SceneBuilder {
     }
   }
 
+  // ── Distant outpost structures ────────────────────────────────
   _addDistantStructures() {
-    const mat = new THREE.MeshLambertMaterial({ color: 0x1a2233 });
-    for (let i = 0; i < 10; i++) {
-      const angle = (i / 10) * Math.PI * 2 + 0.3;
+    const mat = new THREE.MeshLambertMaterial({ color: 0x546e7a });
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2 + 0.3;
       const dist  = 70 + Math.random() * 25;
       const h     = 4 + Math.random() * 10;
       const w     = 1.5 + Math.random() * 2;
-
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mat);
+      const mesh  = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mat);
       mesh.position.set(Math.cos(angle) * dist, h / 2, Math.sin(angle) * dist);
+      mesh.castShadow = true;
       this._scene.add(mesh);
-
-      const glow = new THREE.PointLight(0x0033ff, 0.8, 12);
-      glow.position.set(Math.cos(angle) * dist, h + 0.5, Math.sin(angle) * dist);
-      this._scene.add(glow);
     }
   }
 
-  // Low concrete bunker walls around the player starting area.
+  // ── Player bunker ─────────────────────────────────────────────
   _addBunker() {
-    const mat = new THREE.MeshLambertMaterial({ color: 0x2a3040 });
+    const mat    = new THREE.MeshLambertMaterial({ color: 0x455a64 });
     const rimMat = new THREE.MeshBasicMaterial({ color: 0x00aaff });
 
-    // Four wall segments with a gap in front (-Z)
     const walls = [
-      // [x, z, width, depth]
-      [ 0,   4.5,  6, 0.5],  // back wall
-      [-3.5, 1.5,  0.5, 6],  // left wall
-      [ 3.5, 1.5,  0.5, 6],  // right wall
+      [ 0,   4.5, 6, 0.5],
+      [-3.5, 1.5, 0.5, 6],
+      [ 3.5, 1.5, 0.5, 6],
     ];
     for (const [x, z, w, d] of walls) {
       const wall = new THREE.Mesh(new THREE.BoxGeometry(w, 1.1, d), mat);
       wall.position.set(x, 0.55, z);
-      wall.castShadow = true;
-      wall.receiveShadow = true;
+      wall.castShadow = wall.receiveShadow = true;
       this._scene.add(wall);
     }
 
-    // Platform floor
     const platform = new THREE.Mesh(
       new THREE.CylinderGeometry(4.0, 4.5, 0.25, 10), mat
     );
@@ -146,7 +149,6 @@ export class SceneBuilder {
     platform.receiveShadow = true;
     this._scene.add(platform);
 
-    // Glowing rim strip on platform edge
     const rim = new THREE.Mesh(
       new THREE.TorusGeometry(4.1, 0.05, 6, 40), rimMat
     );
