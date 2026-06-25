@@ -103,6 +103,28 @@ export class Drone {
     this.group.add(this._scanMesh);
   }
 
+  // ── Night-mode glow ───────────────────────────────────────────
+  // Called when the day/night cycle switches.
+  setNightMode(isNight) {
+    this._bodyMesh.material = isNight
+      ? new THREE.MeshBasicMaterial({ color: this.spec.color })
+      : new THREE.MeshLambertMaterial({ color: this.spec.color });
+
+    const propOpacity = isNight ? 0.85 : 0.45;
+    const propColor   = isNight ? 0x00ffff : 0x00aaff;
+    for (const p of this._propellers) {
+      p.material = new THREE.MeshBasicMaterial({
+        color: propColor, transparent: true, opacity: propOpacity, side: THREE.DoubleSide,
+      });
+    }
+
+    // Eye glows brighter at night
+    // (eye is the second child: group → bodyMesh, eye, ...)
+    if (this.group.children[1]?.isMesh) {
+      this.group.children[1].material.color.setHex(isNight ? 0xff4400 : 0xff0000);
+    }
+  }
+
   // ── Combat ────────────────────────────────────────────────────
   hit(damage = 1) {
     if (this.dead) return false;

@@ -27,7 +27,9 @@ export class Game {
     };
 
     this._lastTime = 0;
-    this._gripsReleasedAfterDeath = false; // VR: must release before restarting
+    this._gripsReleasedAfterDeath = false;
+    this._isNight = false;
+    this._skyTransitioning = false; // true while day↔night cross-fade plays
 
     this._initRenderer();
     this._initScene();
@@ -83,7 +85,8 @@ export class Game {
     this.cameraRig.add(this.camera);
     this.scene.add(this.cameraRig);
 
-    new SceneBuilder(this.scene).build();
+    this.sceneBuilder = new SceneBuilder(this.scene);
+    this.sceneBuilder.build();
   }
 
   // ── Systems ───────────────────────────────────────────────────
@@ -96,6 +99,11 @@ export class Game {
     this.turret = new Turret(
       this.scene, this.camera, this.cameraRig, this.renderer
     );
+
+    // Night-only point light that illuminates the turret (intensity 0 during day)
+    this._turretLight = new THREE.PointLight(0xffeedd, 0, 8);
+    this._turretLight.position.set(0, 2, -0.8);
+    this.cameraRig.add(this._turretLight);
 
     this.input = new InputManager(
       this.renderer, this.cameraRig, this.camera, this.scene
@@ -257,6 +265,13 @@ export class Game {
 
     this._infoPanel.visible = false;
     this.ui.hideOverlay();
+
+    // Reset to daytime on new game
+    this._isNight = false;
+    this._skyTransitioning = false;
+    this._turretLight.intensity = 0;
+    this.sceneBuilder.startTransition(false, 0.01, () => {}); // snap to day
+
     this._startMusic();
     this._startNextWave();
   }
@@ -276,8 +291,32 @@ export class Game {
   }
 
   // ── Wave management ───────────────────────────────────────────
+  // Waves 1-5 = day, 6-10 = night, 11-15 = day, ...
+  _isNightWave(w) { return Math.floor((w - 1) / 5) % 2 === 1; }
+
   _startNextWave() {
     this.wave++;
+    const wantNight = this._isNightWave(this.wave);
+    const needsSwitch = wantNight !== this._isNight;
+
+    if (needsSwitch) {
+      // Pause here — run sky transition, then spawn the wave once it finishes
+      this._skyTransitioning = true;
+      this.sceneBuilder.startTransition(wantNight, 4.0, () => {
+        this._isNight = wantNight;
+        this._skyTransitioning = false;
+        // Set all already-active drones to new lighting mode
+        for (const d of this.drones) d.setNightMode(this._isNight);
+        // Night: fade turret light in; day: off
+        this._turretLight.intensity = this._isNight ? 3 : 0;
+        this._launchWave();
+      });
+    } else {
+      this._launchWave();
+    }
+  }
+
+  _launchWave() {
     this.waves.startWave(this.wave);
     this.ui.announceWave(this.wave);
     this.audio.waveStart();
@@ -325,7 +364,13 @@ export class Game {
       // Desktop: Space → handled in input.js keydown (calls window.game.start())
 
     } else if (this.state === 'playing') {
-      this._update(dt, frame);
+      // Sky cross-fade runs during the inter-wave pause — update turret light in sync
+      if (this._skyTransitioning) {
+        this.sceneBuilder.update(dt);
+        this._turretLight.intensity = this.sceneBuilder.currentBlend * 3;
+      } else {
+        this._update(dt, frame);
+      }
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -367,6 +412,9 @@ export class Game {
 
     // ── Wave spawning ─────────────────────────────────────────
     const newDrones = this.waves.update(dt);
+    for (const d of newDrones) {
+      if (this._isNight) d.setNightMode(true);
+    }
     this.drones.push(...newDrones);
 
     // ── Player world position ─────────────────────────────────
