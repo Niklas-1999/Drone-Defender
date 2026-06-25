@@ -80,6 +80,7 @@ export class ShopSystem {
     // Button hit zones stored as { id, x, y, w, h } in canvas coords
     this._btnZones     = [];
     this._continueBtnY = CH - 60;
+    this._hoverBtn     = null;
   }
 
   // ── Public API ──────────────────────────────────────────────────────────
@@ -95,28 +96,37 @@ export class ShopSystem {
   close() { this._panel.visible = false; }
 
   // Call every frame while in shop state.
-  // Returns true when the player continues.
+  // Returns button id (or 'continue') on VR trigger press, else null.
   update(dt, input, vrMode, money) {
-    if (vrMode) {
-      if (input.consumeTriggerJustPressed()) {
-        const rc = new THREE.Raycaster();
-        const q  = new THREE.Quaternion();
-        for (const ctrl of [input.getRightController(), input.getLeftController()]) {
-          if (!ctrl) continue;
-          const pos = new THREE.Vector3();
-          ctrl.getWorldPosition(pos);
-          const dir = new THREE.Vector3(0, 0, -1)
-            .applyQuaternion(ctrl.getWorldQuaternion(q));
-          rc.set(pos, dir.normalize());
-          const hits = rc.intersectObject(this._panel);
-          if (hits.length && hits[0].uv) {
-            const id = this._hitTest(hits[0].uv);
-            if (id) return id; // caller handles the action
-          }
-        }
-      }
+    this._updateHover(input, vrMode, money);
+    if (vrMode && input.consumeTriggerJustPressed()) {
+      return this._hoverBtn; // null if not pointing at a button
     }
     return null;
+  }
+
+  // Raycast every frame to track hover, redraw when it changes.
+  _updateHover(input, vrMode, money) {
+    if (!vrMode || !this._panel.visible) {
+      if (this._hoverBtn !== null) { this._hoverBtn = null; this.draw(money); }
+      return;
+    }
+
+    const rc = new THREE.Raycaster();
+    const q  = new THREE.Quaternion();
+    let newHover = null;
+
+    for (const ctrl of [input.getRightController(), input.getLeftController()]) {
+      if (!ctrl) continue;
+      const pos = new THREE.Vector3();
+      ctrl.getWorldPosition(pos);
+      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(ctrl.getWorldQuaternion(q));
+      rc.set(pos, dir.normalize());
+      const hits = rc.intersectObject(this._panel);
+      if (hits.length && hits[0].uv) { newHover = this._hitTest(hits[0].uv); break; }
+    }
+
+    if (newHover !== this._hoverBtn) { this._hoverBtn = newHover; this.draw(money); }
   }
 
   // Returns button id string (or 'continue') at UV, or null
@@ -243,20 +253,25 @@ export class ShopSystem {
           ctx.fillText(`$${cost}`, ix + 8, iy + 68);
 
           // BUY button
-          const bx = ix + iw - BTN_W - 6;
-          const by = iy + ROW_H - 10 - BTN_H - 6;
+          const bx      = ix + iw - BTN_W - 6;
+          const by      = iy + ROW_H - 10 - BTN_H - 6;
+          const hovered = this._hoverBtn === u.id;
           this._drawBtn(ctx, bx, by, BTN_W, BTN_H, 'BUY',
-            canBuy ? '#00ff88' : '#2a4a3a', canBuy ? '#003318' : '#0a1a10');
+            hovered ? '#00ffff' : (canBuy ? '#00ff88' : '#2a4a3a'),
+            hovered ? '#005544' : (canBuy ? '#003318' : '#0a1a10'));
           if (!maxed && !locked) {
-            this._btnZones.push({ id: u.id, x: ix + iw - BTN_W - 6, y: by, w: BTN_W, h: BTN_H });
+            this._btnZones.push({ id: u.id, x: bx, y: by, w: BTN_W, h: BTN_H });
           }
         }
       }
     }
 
     // CONTINUE button
-    const cby = this._continueBtnY;
-    this._drawBtn(ctx, 300, cby, 300, BTN_H + 8, '▶  CONTINUE TO NEXT WAVE', '#00ffee', '#002a30');
+    const cby     = this._continueBtnY;
+    const contHov = this._hoverBtn === 'continue';
+    this._drawBtn(ctx, 300, cby, 300, BTN_H + 8, '▶  CONTINUE TO NEXT WAVE',
+      contHov ? '#00ffff' : '#00ffee',
+      contHov ? '#00505a' : '#002a30');
     ctx.textAlign = 'center'; // reset after drawBtn
 
     // Desktop hint

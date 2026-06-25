@@ -14,15 +14,26 @@ class Projectile {
     this.mesh = new THREE.Group();
     this.mesh.position.copy(origin);
 
-    // Glow trail — fixed short length so it doesn't clip through the gun
-    const trailLen = 0.35;
+    // Outer glow trail
+    const trailLen = 0.50;
+    const outerR   = size * 0.45;
     const trail = new THREE.Mesh(
-      new THREE.CylinderGeometry(size * 0.12, size * 0.12, trailLen, 4),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55 })
+      new THREE.CylinderGeometry(outerR, outerR, trailLen, 5),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.82 })
     );
     trail.rotation.x = Math.PI / 2;
-    trail.position.set(0, 0, -trailLen * 0.5); // sit behind centre
+    trail.position.set(0, 0, -trailLen * 0.5);
     this.mesh.add(trail);
+
+    // Bright inner core
+    const innerR = size * 0.18;
+    const core = new THREE.Mesh(
+      new THREE.CylinderGeometry(innerR, innerR, trailLen + 0.04, 4),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.92 })
+    );
+    core.rotation.x = Math.PI / 2;
+    core.position.set(0, 0, -trailLen * 0.5);
+    this.mesh.add(core);
 
     // Orient group so +Z = forward
     const q = new THREE.Quaternion().setFromUnitVectors(

@@ -139,16 +139,43 @@ export class Turret {
       this._barrelSpinGroup.add(tip);
     }
 
-    // ── VR world-space crosshair ──────────────────────────────
-    this._vrCrosshair = new THREE.Mesh(
-      new THREE.RingGeometry(0.016, 0.030, 20),
+    // ── VR world-space crosshair (Group so we can layer ring + dot) ──
+    this._vrCrosshair = new THREE.Group();
+    this._vrCrosshair.visible = false;
+    this._scene.add(this._vrCrosshair);
+
+    // Dark shadow outline ring (drawn first, slightly larger)
+    const shadowRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.034, 0.070, 24),
       new THREE.MeshBasicMaterial({
-        color: 0xffffff, transparent: true, opacity: 0.85,
+        color: 0x000000, transparent: true, opacity: 0.50,
         side: THREE.DoubleSide, depthTest: false,
       })
     );
-    this._vrCrosshair.visible = false;
-    this._scene.add(this._vrCrosshair);
+    shadowRing.renderOrder = 10;
+    this._vrCrosshair.add(shadowRing);
+
+    // Main bright ring
+    const mainRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.038, 0.064, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0x00ff88, transparent: true, opacity: 1.0,
+        side: THREE.DoubleSide, depthTest: false,
+      })
+    );
+    mainRing.renderOrder = 11;
+    this._vrCrosshair.add(mainRing);
+
+    // Center dot
+    const xhDot = new THREE.Mesh(
+      new THREE.CircleGeometry(0.010, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.95,
+        side: THREE.DoubleSide, depthTest: false,
+      })
+    );
+    xhDot.renderOrder = 12;
+    this._vrCrosshair.add(xhDot);
   }
 
   // Side handle: horizontal arm + vertical grip post on each side of housing.

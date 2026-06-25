@@ -163,6 +163,10 @@ export class Game {
     this._infoPanel.position.set(0, 1.55, -3);
     this.scene.add(this._infoPanel);
 
+    // VR hover state for the action button
+    this._panelBtnHovered = false;
+    this._panelBtnUV      = null;
+
     this._drawInfoPanel('menu', 0, 0);
   }
 
@@ -180,6 +184,8 @@ export class Game {
     ctx.stroke();
     ctx.textAlign = 'center';
 
+    const hov = this._panelBtnHovered;
+
     if (panelState === 'menu') {
       ctx.fillStyle = '#00ddff';
       ctx.font = 'bold 40px monospace';
@@ -194,7 +200,13 @@ export class Game {
       ctx.font = '20px monospace';
       ctx.fillText('────────────────────────', W / 2, 170);
 
-      this._drawPanelBtn(ctx, W / 2, 220, 200, 52, '▶  START', '#00ffee', '#002a30');
+      this._drawPanelBtn(ctx, W / 2, 220, 200, 52, '▶  START',
+        hov ? '#88ffee' : '#00ffee',
+        hov ? '#004a50' : '#002a30');
+
+      // UV zone of this button (for VR hover detection)
+      // Button canvas rect: x 156-356, y 194-246 in 512×340 canvas
+      this._panelBtnUV = { x0: 0.305, x1: 0.695, y0: 0.276, y1: 0.429 };
 
       ctx.fillStyle = '#666688';
       ctx.font = '18px monospace';
@@ -215,7 +227,12 @@ export class Game {
       ctx.font = '20px monospace';
       ctx.fillText('────────────────────────', W / 2, 220);
 
-      this._drawPanelBtn(ctx, W / 2, 272, 240, 52, '↺  TRY AGAIN', '#ffcc44', '#2a1a00');
+      this._drawPanelBtn(ctx, W / 2, 272, 240, 52, '↺  TRY AGAIN',
+        hov ? '#ffee88' : '#ffcc44',
+        hov ? '#4a3800' : '#2a1a00');
+
+      // UV zone: x 136-376, y 246-298 in 512×340
+      this._panelBtnUV = { x0: 0.266, x1: 0.734, y0: 0.124, y1: 0.276 };
 
       ctx.fillStyle = '#666688';
       ctx.font = '18px monospace';
@@ -280,7 +297,8 @@ export class Game {
     this.turret.reload();
     this._emptyGunPlayed = false;
 
-    this._infoPanel.visible = false;
+    this._infoPanel.visible  = false;
+    this._panelBtnHovered    = false;
     this.shop.close();
     this.ui.hideOverlay();
 
@@ -363,7 +381,7 @@ export class Game {
     this.audio.waveStart();
   }
 
-  // ── Panel ray-cast ────────────────────────────────────────────
+  // ── Panel ray-cast + hover ────────────────────────────────────
   _panelRayHit() {
     const rc = new THREE.Raycaster();
     const q  = new THREE.Quaternion();
@@ -374,6 +392,26 @@ export class Game {
       const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(ctrl.getWorldQuaternion(q));
       rc.set(pos, dir.normalize());
       if (rc.intersectObject(this._infoPanel).length > 0) return true;
+    }
+    return false;
+  }
+
+  _getPanelBtnHover() {
+    if (!this.vrMode || !this._panelBtnUV) return false;
+    const rc = new THREE.Raycaster();
+    const q  = new THREE.Quaternion();
+    for (const ctrl of [this.input.getLeftController(), this.input.getRightController()]) {
+      if (!ctrl) continue;
+      const pos = new THREE.Vector3();
+      ctrl.getWorldPosition(pos);
+      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(ctrl.getWorldQuaternion(q));
+      rc.set(pos, dir.normalize());
+      const hits = rc.intersectObject(this._infoPanel);
+      if (hits.length && hits[0].uv) {
+        const { x, y } = hits[0].uv;
+        const z = this._panelBtnUV;
+        if (x >= z.x0 && x <= z.x1 && y >= z.y0 && y <= z.y1) return true;
+      }
     }
     return false;
   }
@@ -397,8 +435,16 @@ export class Game {
     this.input.update(dt, frame, this.vrMode);
 
     if (this.state === 'menu' || this.state === 'gameover') {
-      if (this.vrMode && this.input.consumeTriggerJustPressed()) {
-        if (this._panelRayHit()) this.start();
+      if (this.vrMode) {
+        // Button hover feedback
+        const h = this._getPanelBtnHover();
+        if (h !== this._panelBtnHovered) {
+          this._panelBtnHovered = h;
+          this._drawInfoPanel(this.state === 'menu' ? 'menu' : 'gameover', this.score, this.wave);
+        }
+        if (this.input.consumeTriggerJustPressed()) {
+          if (this._panelRayHit()) this.start();
+        }
       }
 
     } else if (this.state === 'shop') {
@@ -564,6 +610,7 @@ export class Game {
       money:       this.money,
       empFraction: this.emp.readyFraction,
       empUnlocked: this.emp.unlocked,
+      empCooldown: this.emp.cooldownRemaining,
       fireRate:    this.turret.getFireRate(),
     });
   }

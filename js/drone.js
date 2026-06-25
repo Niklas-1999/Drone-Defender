@@ -37,8 +37,9 @@ export class Drone {
     this.dead    = false;
     this._scene  = scene;
 
-    this._stunTimer  = 0;
-    this._scanTimer  = 0;
+    this._stunTimer     = 0;
+    this._scanTimer     = 0;
+    this._hitFlashTimer = 0;
 
     this.group = new THREE.Group();
     this._buildMesh();
@@ -131,6 +132,7 @@ export class Drone {
     this.hp -= damage;
     this._updateHPBar();
     if (this.hp <= 0) { this.dead = true; return true; }
+    this._hitFlashTimer = 0.12; // brief red flash on non-lethal hit
     return false;
   }
 
@@ -149,7 +151,10 @@ export class Drone {
     if (this.dead) return { dist: Infinity };
 
     // Stun
-    if (this._stunTimer > 0) {
+    if (this._hitFlashTimer > 0) {
+      this._hitFlashTimer -= dt;
+      this._bodyMesh.material.color.setHex(0xff6644);
+    } else if (this._stunTimer > 0) {
       this._stunTimer -= dt;
       this._bodyMesh.material.color.setHex(0x0066ff);
     } else {
