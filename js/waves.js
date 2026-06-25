@@ -1,7 +1,7 @@
 import { Drone } from './drone.js';
 
 // Drones spawn in a forward arc (±65° from player's -Z look direction).
-const HALF_ARC = 65 * (Math.PI / 180);
+const HALF_ARC = 52 * (Math.PI / 180); // 20 % narrower than original 65°
 
 function buildWaveConfig(waveNumber) {
   const w = waveNumber;
