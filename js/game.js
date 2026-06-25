@@ -8,6 +8,12 @@ import { ProjectileManager } from './projectiles.js';
 import { Turret }            from './turret.js';
 import { InputManager }      from './input.js';
 import { WaveManager }       from './waves.js';
+import { EMP }               from './emp.js';
+import { AutoTurret }        from './autoturret.js';
+import { ShopSystem }        from './shop.js';
+
+// Money awarded per drone kill by type
+const KILL_MONEY = { scout: 10, warrior: 20, titan: 30 };
 
 export class Game {
   constructor() {
@@ -15,13 +21,20 @@ export class Game {
     this.score    = 0;
     this.wave     = 0;
     this.playerHP = 100;
+    this.money    = 0;
     this.drones   = [];
     this.vrMode   = false;
 
-    this._lastTime = 0;
-    this._isNight  = false;
-    this._skyTransitioning  = false;
-    this._emptyGunPlayed    = false;
+    this._lastTime       = 0;
+    this._isNight        = false;
+    this._skyTransitioning = false;
+    this._emptyGunPlayed = false;
+
+    // Upgrade levels (keyed by upgrade id) — persisted through waves, reset on new game
+    this._upgradeLevels = {};
+
+    // Auto turrets — null until purchased
+    this._autoTurrets = { left: null, right: null };
 
     this._initRenderer();
     this._initScene();
@@ -92,7 +105,6 @@ export class Game {
       this.scene, this.camera, this.cameraRig, this.renderer
     );
 
-    // Night-only point light that illuminates the turret (intensity 0 during day)
     this._turretLight = new THREE.PointLight(0xffeedd, 0, 8);
     this._turretLight.position.set(0, 2, -0.8);
     this.cameraRig.add(this._turretLight);
@@ -102,6 +114,8 @@ export class Game {
     );
 
     this.waves = new WaveManager(this.scene);
+    this.emp   = new EMP();
+    this.shop  = new ShopSystem(this.scene, this.camera);
   }
 
   // ── Music ─────────────────────────────────────────────────────
@@ -114,7 +128,6 @@ export class Game {
     this._tracks.forEach((t, i) => {
       t.volume = 0.55;
       t.addEventListener('ended', () => {
-        // Switch to the other track
         this._currentTrack = 1 - i;
         if (this.state === 'playing') this._tracks[this._currentTrack].play().catch(() => {});
       });
@@ -134,7 +147,7 @@ export class Game {
   // ── 3-D info panel (start / game-over) ───────────────────────
   _buildInfoPanel() {
     const W = 512, H = 340;
-    this._panelCanvas  = document.createElement('canvas');
+    this._panelCanvas        = document.createElement('canvas');
     this._panelCanvas.width  = W;
     this._panelCanvas.height = H;
     this._panelCtx = this._panelCanvas.getContext('2d');
@@ -147,7 +160,6 @@ export class Game {
         side: THREE.DoubleSide, depthTest: false,
       })
     );
-    // Fixed world position: eye height, 3 m in front
     this._infoPanel.position.set(0, 1.55, -3);
     this.scene.add(this._infoPanel);
 
@@ -159,7 +171,6 @@ export class Game {
     const W = 512, H = 340;
     ctx.clearRect(0, 0, W, H);
 
-    // Rounded panel background
     ctx.fillStyle = 'rgba(0,8,28,0.92)';
     ctx.beginPath();
     ctx.roundRect(6, 6, W - 12, H - 12, 18);
@@ -167,7 +178,6 @@ export class Game {
     ctx.strokeStyle = '#00aaff';
     ctx.lineWidth = 3;
     ctx.stroke();
-
     ctx.textAlign = 'center';
 
     if (panelState === 'menu') {
@@ -184,7 +194,6 @@ export class Game {
       ctx.font = '20px monospace';
       ctx.fillText('────────────────────────', W / 2, 170);
 
-      // START button rect
       this._drawPanelBtn(ctx, W / 2, 220, 200, 52, '▶  START', '#00ffee', '#002a30');
 
       ctx.fillStyle = '#666688';
@@ -206,7 +215,6 @@ export class Game {
       ctx.font = '20px monospace';
       ctx.fillText('────────────────────────', W / 2, 220);
 
-      // TRY AGAIN button rect
       this._drawPanelBtn(ctx, W / 2, 272, 240, 52, '↺  TRY AGAIN', '#ffcc44', '#2a1a00');
 
       ctx.fillStyle = '#666688';
@@ -240,20 +248,42 @@ export class Game {
 
     this.state    = 'playing';
     this.score    = 0;
-    this.playerHP = 100;
     this.wave     = 0;
+    this.playerHP = 100;
+    this.money    = 0;
 
     for (const d of this.drones) d.destroy();
     this.drones = [];
     this.projectiles.clear();
 
-    this._infoPanel.visible = false;
-    this.ui.hideOverlay();
+    // Destroy any lingering auto turrets
+    for (const side of ['left', 'right']) {
+      if (this._autoTurrets[side]) {
+        this._autoTurrets[side].destroy();
+        this._autoTurrets[side] = null;
+      }
+    }
 
-    this.turret.reload();          // reset ammo to full
+    // Reset upgrades
+    this._upgradeLevels = {};
+    this.shop.resetUpgrades();
+
+    // Reset EMP
+    this.emp.unlocked     = false;
+    this.emp.cooldownMax  = 15;
+    this.emp.stunDuration = 1.0;
+    this.emp._cooldownT   = 0;
+
+    // Reset turret stats
+    this.turret.setMaxAmmo(50);
+    this.turret.setFireCooldown(0.20);
+    this.turret.reload();
     this._emptyGunPlayed = false;
 
-    // Reset to daytime on new game
+    this._infoPanel.visible = false;
+    this.shop.close();
+    this.ui.hideOverlay();
+
     this._isNight = false;
     this._skyTransitioning = false;
     this._turretLight.intensity = 0;
@@ -263,24 +293,61 @@ export class Game {
     this._startNextWave();
   }
 
+  // ── Upgrade system ────────────────────────────────────────────
+
+  buyAutoTurret(side) {
+    if (this._autoTurrets[side]) return;
+    this._autoTurrets[side] = new AutoTurret(this.scene, this.cameraRig, side);
+  }
+
+  upgradeAutoTurretRate(level) {
+    // Base 3s cooldown, each level multiplies by 1/1.5
+    const cd = 3.0 * Math.pow(1 / 1.5, level);
+    for (const side of ['left', 'right']) {
+      if (this._autoTurrets[side]) this._autoTurrets[side].setFireCooldown(cd);
+    }
+  }
+
+  _applyUpgrade(id) {
+    const upg = this.shop.getUpgrade(id);
+    if (!upg) return;
+
+    const lvlNow = this._upgradeLevels[id] ?? 0;
+    if (lvlNow >= upg.maxLevel) return;
+
+    const cost = upg.cost(lvlNow);
+    if (this.money < cost) return;
+
+    // Check requirements
+    if (upg.requires?.some(r => !(this._upgradeLevels[r] ?? 0))) return;
+
+    this.money -= cost;
+    this._upgradeLevels[id] = lvlNow + 1;
+    this.shop.levels[id]    = this._upgradeLevels[id];
+    upg.apply(this, this._upgradeLevels[id]);
+    this.shop.draw(this.money);
+  }
+
+  // ── Shop flow ─────────────────────────────────────────────────
+  _openShop() {
+    this.state = 'shop';
+    this.shop.open(this.wave, this.money, this._upgradeLevels);
+  }
+
   // ── Wave management ───────────────────────────────────────────
-  // Waves 1-5 = day, 6-10 = night, 11-15 = day, ...
   _isNightWave(w) { return Math.floor((w - 1) / 5) % 2 === 1; }
 
   _startNextWave() {
     this.wave++;
-    const wantNight = this._isNightWave(this.wave);
+    const wantNight  = this._isNightWave(this.wave);
     const needsSwitch = wantNight !== this._isNight;
 
     if (needsSwitch) {
-      // Pause here — run sky transition, then spawn the wave once it finishes
       this._skyTransitioning = true;
       this.sceneBuilder.startTransition(wantNight, 4.0, () => {
         this._isNight = wantNight;
         this._skyTransitioning = false;
-        // Set all already-active drones to new lighting mode
         for (const d of this.drones) d.setNightMode(this._isNight);
-        // Night: fade turret light in; day: off
         this._turretLight.intensity = this._isNight ? 3 : 0;
         this._launchWave();
       });
@@ -290,12 +357,13 @@ export class Game {
   }
 
   _launchWave() {
+    this.state = 'playing';
     this.waves.startWave(this.wave);
     this.ui.announceWave(this.wave);
     this.audio.waveStart();
   }
 
-  // Returns true if any VR controller ray currently intersects the info panel.
+  // ── Panel ray-cast ────────────────────────────────────────────
   _panelRayHit() {
     const rc = new THREE.Raycaster();
     const q  = new THREE.Quaternion();
@@ -326,18 +394,17 @@ export class Game {
     const dt = Math.min((timestamp - this._lastTime) / 1000, 0.05);
     this._lastTime = timestamp;
 
-    // Input is always polled (needed to detect start in menu/gameover states)
     this.input.update(dt, frame, this.vrMode);
 
     if (this.state === 'menu' || this.state === 'gameover') {
-      // VR: aim a controller at the info panel and pull any trigger
       if (this.vrMode && this.input.consumeTriggerJustPressed()) {
         if (this._panelRayHit()) this.start();
       }
-      // Desktop: Space → handled in input.js keydown → window.game.start()
+
+    } else if (this.state === 'shop') {
+      this._updateShop(dt);
 
     } else if (this.state === 'playing') {
-      // Sky cross-fade runs during the inter-wave pause — update turret light in sync
       if (this._skyTransitioning) {
         this.sceneBuilder.update(dt);
         this._turretLight.intensity = this.sceneBuilder.currentBlend * 3;
@@ -349,8 +416,44 @@ export class Game {
     this.renderer.render(this.scene, this.camera);
   }
 
+  // ── Shop update ───────────────────────────────────────────────
+  _updateShop(dt) {
+    // VR interaction — returns button id or null
+    const vrAction = this.shop.update(dt, this.input, this.vrMode, this.money);
+
+    // Keyboard interaction
+    const key = this.input.consumeShopKey();
+    let action = vrAction;
+
+    if (!action && key) {
+      if (key === '0' || key === ' ') {
+        action = 'continue';
+      } else {
+        action = this.shop.keyToId(key);
+      }
+    }
+
+    if (action === 'continue') {
+      this.shop.close();
+      this._startNextWave();
+    } else if (action) {
+      this._applyUpgrade(action);
+    }
+
+    // Always update UI so money changes are visible
+    this._updateUI();
+  }
+
   // ── Game update (playing state) ───────────────────────────────
   _update(dt, frame) {
+    // ── EMP ───────────────────────────────────────────────────
+    this.emp.update(dt);
+    if (this.input.consumeEMP()) {
+      if (this.emp.activate(this.drones)) {
+        this.audio.baseHit?.(); // reuse impact sound as EMP pulse; ok if missing
+      }
+    }
+
     // ── Turret aim + barrel spin ──────────────────────────────
     const isFiring = this.input.isTriggerHeld();
     this.turret.update(dt, this.vrMode, this.input, isFiring);
@@ -375,6 +478,11 @@ export class Game {
     if (this.input.consumeReload()) {
       this.turret.reload();
       this.audio.gunReload();
+    }
+
+    // ── Auto turrets ──────────────────────────────────────────
+    for (const side of ['left', 'right']) {
+      this._autoTurrets[side]?.update(dt, this.drones, this.projectiles);
     }
 
     // ── Wave spawning ─────────────────────────────────────────
@@ -419,6 +527,7 @@ export class Game {
       this.audio.hit();
       if (killed) {
         this.score += drone.spec.points;
+        this.money += KILL_MONEY[drone.spec.name] ?? 10;
         this.particles.emit(drone.group.position.clone(), 'fire', 14, 8);
         this.particles.emit(drone.group.position.clone(), 'spark', 6, 10);
         this.audio.explosion(drone.spec.size);
@@ -436,19 +545,26 @@ export class Game {
     // ── Particles ─────────────────────────────────────────────
     this.particles.update(dt);
 
-    // ── Wave complete ─────────────────────────────────────────
+    // ── Wave complete → open shop ─────────────────────────────
     if (this.waves.isComplete() && this.drones.length === 0) {
-      this.waves.scheduleNext(() => this._startNextWave(), 4);
+      this.waves.scheduleNext(() => this._openShop(), 3);
     }
 
-    // ── UI ────────────────────────────────────────────────────
+    this._updateUI();
+  }
+
+  _updateUI() {
     this.ui.update({
-      score:   this.score,
-      wave:    this.wave,
-      drones:  this.drones.length,
-      baseHP:  this.playerHP,
-      ammo:    this.turret.getAmmo(),
-      maxAmmo: this.turret.getMaxAmmo(),
+      score:       this.score,
+      wave:        this.wave,
+      drones:      this.drones.length,
+      baseHP:      this.playerHP,
+      ammo:        this.turret.getAmmo(),
+      maxAmmo:     this.turret.getMaxAmmo(),
+      money:       this.money,
+      empFraction: this.emp.readyFraction,
+      empUnlocked: this.emp.unlocked,
+      fireRate:    this.turret.getFireRate(),
     });
   }
 

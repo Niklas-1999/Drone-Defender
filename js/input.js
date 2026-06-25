@@ -28,6 +28,9 @@ export class InputManager {
     this._buttonWas          = {};
     this._reloadJustPressed  = false;
     this._reloadWas          = false;
+    this._empJustPressed     = false;
+    this._empWasL            = false;
+    this._shopKey            = null;  // '1'-'9' or '0' during shop
 
     this._setupDesktop();
     this._setupVRControllers();
@@ -81,6 +84,19 @@ export class InputManager {
       if (e.code === 'KeyR') {
         e.preventDefault();
         this._reloadJustPressed = true;
+      }
+      if (e.code === 'KeyE') {
+        e.preventDefault();
+        this._empJustPressed = true;
+      }
+    });
+
+    document.addEventListener('keydown', e => {
+      if (window.game?.state !== 'shop') return;
+      const k = e.key;
+      if ((k >= '0' && k <= '9') || k === ' ') {
+        e.preventDefault();
+        this._shopKey = k === ' ' ? '0' : k;
       }
     });
 
@@ -171,6 +187,11 @@ export class InputManager {
         this._triggerWas.left = ltrig;
 
         if (gp.buttons[1]?.pressed) this._gripLeft = true;
+
+        // X button (index 4) on left controller = EMP
+        const xBtn = gp.buttons[4]?.pressed ?? false;
+        if (xBtn && !this._empWasL) this._empJustPressed = true;
+        this._empWasL = xBtn;
       }
     }
   }
@@ -179,6 +200,18 @@ export class InputManager {
   // Full-auto: true while trigger / mouse / space is held.
   isTriggerHeld() {
     return this._mouseHeld || this._spaceHeld || this._triggerHeld || this._triggerHeldLeft;
+  }
+
+  consumeEMP() {
+    const v = this._empJustPressed;
+    this._empJustPressed = false;
+    return v;
+  }
+
+  consumeShopKey() {
+    const v = this._shopKey;
+    this._shopKey = null;
+    return v;
   }
 
   // Rising-edge of reload button (R key or VR A button).

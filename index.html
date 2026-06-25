@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>VR Drone Defender</title>
   <link rel="stylesheet" href="css/style.css">
-  <!-- Import map lets Three.js add-ons resolve their own 'three' bare import -->
   <script type="importmap">
   {
     "imports": {
@@ -17,47 +16,56 @@
 </head>
 <body>
 
-  <!-- ── Top HUD ── -->
-  <div id="ui">
-    <div id="hud-top">
-      <div class="hud-panel">
-        <div class="hud-label">SCORE</div>
-        <div id="hud-score" class="hud-value">0</div>
-      </div>
-      <div class="hud-panel" style="text-align:center">
-        <div class="hud-label">WAVE</div>
-        <div id="hud-wave" class="hud-value">–</div>
-      </div>
-      <div class="hud-panel" style="text-align:right">
-        <div class="hud-label">DRONES</div>
-        <div id="hud-drones" class="hud-value">0</div>
-      </div>
+  <!-- ── Visor scan-line overlay ── -->
+  <div id="visor-overlay"></div>
+
+  <!-- ── Top-left: Score + Credits + EMP key hint ── -->
+  <div id="hud-topleft" class="hud-corner">
+    <div class="v-label">SCORE</div>
+    <div id="hud-score" class="v-value">0</div>
+    <div class="v-label" style="margin-top:6px">CREDITS</div>
+    <div id="hud-money" class="v-value v-gold">$0</div>
+    <div id="hud-emp-hint" class="v-emp-hint hidden">[E] EMP READY</div>
+  </div>
+
+  <!-- ── Top-center: Wave ── -->
+  <div id="hud-topcenter" class="hud-corner hud-center-x">
+    <div class="v-label">WAVE</div>
+    <div id="hud-wave" class="v-value v-large">–</div>
+  </div>
+
+  <!-- ── Top-right: Drones ── -->
+  <div id="hud-topright" class="hud-corner hud-right">
+    <div class="v-label" style="text-align:right">DRONES</div>
+    <div id="hud-drones" class="v-value" style="text-align:right">0</div>
+  </div>
+
+  <!-- ── Bottom-center: Health bar ── -->
+  <div id="hud-bottomcenter" class="hud-bottom-center">
+    <div class="v-label" style="text-align:center;margin-bottom:4px">PLAYER HEALTH</div>
+    <div class="hp-track">
+      <div id="base-hp-fill" class="hp-fill"></div>
     </div>
+    <div id="base-hp-bar" style="display:none"></div><!-- compat alias -->
   </div>
 
   <!-- ── Crosshair ── -->
   <div id="crosshair"></div>
 
-  <!-- ── Base HP ── -->
-  <div id="base-hp-bar">
-    <div class="bar-label">PLAYER HEALTH</div>
-    <div class="bar-track">
-      <div id="base-hp-fill" class="bar-fill"></div>
-    </div>
-  </div>
-
   <!-- ── Wave announcement ── -->
   <div id="wave-announce"></div>
 
-  <!-- Overlay kept for ui.js compat but hidden; 3-D panel handles start/game-over -->
+  <!-- Overlay kept for ui.js compat but hidden -->
   <div id="overlay" class="hidden" style="display:none">
-    <h1 id="overlay-title">VR DRONE DEFENDER</h1>
+    <h1 id="overlay-title"></h1>
     <p id="overlay-sub"></p>
     <button id="overlay-btn" onclick="window.game?.start()">START</button>
   </div>
 
-  <!-- ── VR button injected by Three.js ── -->
+  <!-- ── VR button ── -->
   <div id="vr-button-container"></div>
+
+  <!-- Ammo ring, EMP ring, fire rate label — injected by ui.js -->
 
   <script type="module" src="js/main.js"></script>
 </body>

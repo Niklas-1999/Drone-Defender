@@ -11,13 +11,14 @@ export class Turret {
     this._cameraRig = cameraRig;
     this._renderer  = renderer;
 
-    this._fireCooldown = 0;
-    this._flashTimer   = 0;
-    this._lastInput    = null;
-    this._grabbed      = false;
-    this._spinVel      = 0;
-    this._ammo         = 50;
-    this._maxAmmo      = 50;
+    this._fireCooldownMax = 0.20;  // base fire rate; set by upgrades
+    this._fireCooldown    = 0;
+    this._flashTimer      = 0;
+    this._lastInput       = null;
+    this._grabbed         = false;
+    this._spinVel         = 0;
+    this._ammo            = 50;
+    this._maxAmmo         = 50;
 
     this._build();
   }
@@ -241,7 +242,7 @@ export class Turret {
     if (vrMode && !this._grabbed) return null;
     if (this._ammo <= 0) return null;
 
-    this._fireCooldown = 0.20;
+    this._fireCooldown = this._fireCooldownMax;
     this._ammo--;
 
     audio.shoot();
@@ -265,10 +266,18 @@ export class Turret {
     return { muzzlePos, aimDir };
   }
 
-  // ── Ammo ──────────────────────────────────────────────────────
+  // ── Ammo & upgrade API ────────────────────────────────────────
   getAmmo()    { return this._ammo; }
   getMaxAmmo() { return this._maxAmmo; }
   reload()     { this._ammo = this._maxAmmo; }
+
+  setMaxAmmo(n) {
+    this._maxAmmo = n;
+    if (this._ammo > n) this._ammo = n;
+  }
+
+  setFireCooldown(n) { this._fireCooldownMax = n; }
+  getFireRate()      { return Math.round(1 / this._fireCooldownMax * 10) / 10; }
 
   // ── Helpers ───────────────────────────────────────────────────
   _getWorldAimDir(vrMode, input) {
