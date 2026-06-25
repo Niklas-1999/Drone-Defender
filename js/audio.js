@@ -8,10 +8,19 @@ export class AudioSystem {
   }
 
   // Must be called from a user-gesture handler (click / keydown).
-  init() {
+  async init() {
     if (this.initialized) return;
     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     this.initialized = true;
+    this._gunBuffer = null;
+
+    try {
+      const resp = await fetch('assets/Soundeffects/machine-gun.mp3');
+      const ab   = await resp.arrayBuffer();
+      this._gunBuffer = await this.ctx.decodeAudioData(ab);
+    } catch (e) {
+      console.warn('[Audio] machine-gun.mp3 failed to load, using procedural fallback:', e);
+    }
   }
 
   // Resume if suspended (browsers pause on focus loss).
@@ -31,9 +40,27 @@ export class AudioSystem {
   shoot() {
     if (!this.initialized) return;
     this._resume();
-    const ctx = this.ctx, t = ctx.currentTime;
 
-    // Low thump
+    if (this._gunBuffer) {
+      // Play the machine-gun sample with slight pitch variation per shot
+      const src  = this.ctx.createBufferSource();
+      const gain = this.ctx.createGain();
+      src.buffer = this._gunBuffer;
+      src.playbackRate.value = 0.92 + Math.random() * 0.16; // 0.92 – 1.08
+      gain.gain.value = 0.55;
+      src.connect(gain);
+      gain.connect(this.ctx.destination);
+      src.start();
+      // Cap to 0.25 s so rapid fire doesn't layer long tails
+      src.stop(this.ctx.currentTime + 0.25);
+    } else {
+      this._shootProcedural();
+    }
+  }
+
+  // Procedural fallback (used while the file is still loading)
+  _shootProcedural() {
+    const ctx = this.ctx, t = ctx.currentTime;
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sawtooth';
@@ -44,8 +71,7 @@ export class AudioSystem {
     osc.connect(gain); gain.connect(ctx.destination);
     osc.start(t); osc.stop(t + 0.14);
 
-    // Noise crack
-    const ns     = ctx.createBufferSource();
+    const ns = ctx.createBufferSource();
     const nsGain = ctx.createGain();
     ns.buffer = this._noiseBuffer(0.08);
     nsGain.gain.setValueAtTime(0.35, t);
