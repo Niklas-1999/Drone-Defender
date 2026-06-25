@@ -16,6 +16,8 @@ export class Turret {
     this._lastInput    = null;
     this._grabbed      = false;
     this._spinVel      = 0;
+    this._ammo         = 50;
+    this._maxAmmo      = 50;
 
     this._build();
   }
@@ -237,8 +239,10 @@ export class Turret {
   fire(vrMode, audio) {
     if (this._fireCooldown > 0) return null;
     if (vrMode && !this._grabbed) return null;
+    if (this._ammo <= 0) return null;
 
-    this._fireCooldown = 0.10;
+    this._fireCooldown = 0.20;
+    this._ammo--;
 
     audio.shoot();
     this._muzzleFlash.material.opacity = 1;
@@ -260,6 +264,11 @@ export class Turret {
 
     return { muzzlePos, aimDir };
   }
+
+  // ── Ammo ──────────────────────────────────────────────────────
+  getAmmo()    { return this._ammo; }
+  getMaxAmmo() { return this._maxAmmo; }
+  reload()     { this._ammo = this._maxAmmo; }
 
   // ── Helpers ───────────────────────────────────────────────────
   _getWorldAimDir(vrMode, input) {

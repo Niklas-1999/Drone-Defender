@@ -8,10 +8,35 @@ export class AudioSystem {
   }
 
   // Must be called from a user-gesture handler (click / keydown).
-  init() {
+  async init() {
     if (this.initialized) return;
     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     this.initialized = true;
+    this._emptyBuf  = null;
+    this._reloadBuf = null;
+    this._loadBuf('assets/Soundeffects/empty-gun.mp3').then(b  => { this._emptyBuf  = b; });
+    this._loadBuf('assets/Soundeffects/gun-reload.mp3').then(b => { this._reloadBuf = b; });
+  }
+
+  async _loadBuf(url) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await this.ctx.decodeAudioData(await r.arrayBuffer());
+    } catch (e) {
+      console.warn('[Audio] failed to load', url, e);
+      return null;
+    }
+  }
+
+  _playBuf(buf, gain = 0.7, pitch = 0) {
+    const src = this.ctx.createBufferSource();
+    const g   = this.ctx.createGain();
+    src.buffer = buf;
+    if (pitch) src.playbackRate.value = 1 - pitch + Math.random() * pitch * 2;
+    g.gain.value = gain;
+    src.connect(g); g.connect(this.ctx.destination);
+    src.start();
   }
 
   // Resume if suspended (browsers pause on focus loss).
@@ -50,6 +75,47 @@ export class AudioSystem {
     nsGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
     ns.connect(nsGain); nsGain.connect(ctx.destination);
     ns.start(t);
+  }
+
+  // ── Empty-magazine click ─────────────────────────────────────
+  emptyGun() {
+    if (!this.initialized) return;
+    this._resume();
+    if (this._emptyBuf) {
+      this._playBuf(this._emptyBuf, 0.75, 0.05);
+    } else {
+      const ctx = this.ctx, t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const g   = ctx.createGain();
+      osc.type = 'square'; osc.frequency.value = 80;
+      g.gain.setValueAtTime(0.08, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+      osc.connect(g); g.connect(ctx.destination);
+      osc.start(t); osc.stop(t + 0.045);
+    }
+  }
+
+  // ── Reload ────────────────────────────────────────────────────
+  gunReload() {
+    if (!this.initialized) return;
+    this._resume();
+    if (this._reloadBuf) {
+      this._playBuf(this._reloadBuf, 0.75);
+    } else {
+      const ctx = this.ctx;
+      for (let i = 0; i < 3; i++) {
+        const t = ctx.currentTime + i * 0.13;
+        const osc = ctx.createOscillator();
+        const g   = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(180 - i * 25, t);
+        osc.frequency.exponentialRampToValueAtTime(55, t + 0.09);
+        g.gain.setValueAtTime(0.1, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+        osc.connect(g); g.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.09);
+      }
+    }
   }
 
   // ── Hit / impact ─────────────────────────────────────────────

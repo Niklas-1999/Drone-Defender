@@ -20,7 +20,8 @@ export class Game {
 
     this._lastTime = 0;
     this._isNight  = false;
-    this._skyTransitioning = false;
+    this._skyTransitioning  = false;
+    this._emptyGunPlayed    = false;
 
     this._initRenderer();
     this._initScene();
@@ -249,6 +250,9 @@ export class Game {
     this._infoPanel.visible = false;
     this.ui.hideOverlay();
 
+    this.turret.reload();          // reset ammo to full
+    this._emptyGunPlayed = false;
+
     // Reset to daytime on new game
     this._isNight = false;
     this._skyTransitioning = false;
@@ -354,8 +358,23 @@ export class Game {
 
     // ── Full-auto shooting ────────────────────────────────────
     if (isFiring) {
-      const shot = this.turret.fire(this.vrMode, this.audio);
-      if (shot) this.projectiles.firePlayer(shot.muzzlePos, shot.aimDir);
+      if (this.turret.getAmmo() === 0) {
+        if (!this._emptyGunPlayed) {
+          this.audio.emptyGun();
+          this._emptyGunPlayed = true;
+        }
+      } else {
+        const shot = this.turret.fire(this.vrMode, this.audio);
+        if (shot) this.projectiles.firePlayer(shot.muzzlePos, shot.aimDir);
+      }
+    } else {
+      this._emptyGunPlayed = false;
+    }
+
+    // ── Reload ────────────────────────────────────────────────
+    if (this.input.consumeReload()) {
+      this.turret.reload();
+      this.audio.gunReload();
     }
 
     // ── Wave spawning ─────────────────────────────────────────
@@ -424,10 +443,12 @@ export class Game {
 
     // ── UI ────────────────────────────────────────────────────
     this.ui.update({
-      score:  this.score,
-      wave:   this.wave,
-      drones: this.drones.length,
-      baseHP: this.playerHP,
+      score:   this.score,
+      wave:    this.wave,
+      drones:  this.drones.length,
+      baseHP:  this.playerHP,
+      ammo:    this.turret.getAmmo(),
+      maxAmmo: this.turret.getMaxAmmo(),
     });
   }
 

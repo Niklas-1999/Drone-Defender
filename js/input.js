@@ -22,10 +22,12 @@ export class InputManager {
     this._gripLeft  = false;
     this._gripRight = false;
 
-    this._rightController = null;
-    this._leftController  = null;
-    this._triggerWas      = { left: false, right: false };
-    this._buttonWas       = {};
+    this._rightController    = null;
+    this._leftController     = null;
+    this._triggerWas         = { left: false, right: false };
+    this._buttonWas          = {};
+    this._reloadJustPressed  = false;
+    this._reloadWas          = false;
 
     this._setupDesktop();
     this._setupVRControllers();
@@ -75,6 +77,10 @@ export class InputManager {
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
         this._spaceHeld = true;
+      }
+      if (e.code === 'KeyR') {
+        e.preventDefault();
+        this._reloadJustPressed = true;
       }
     });
 
@@ -151,6 +157,11 @@ export class InputManager {
         this._triggerWas.right = trig;
 
         if (gp.buttons[1]?.pressed) this._gripRight = true;
+
+        // A button (index 4) = reload
+        const aBtn = gp.buttons[4]?.pressed ?? false;
+        if (aBtn && !this._reloadWas) this._reloadJustPressed = true;
+        this._reloadWas = aBtn;
       }
 
       if (hand === 'left') {
@@ -168,6 +179,13 @@ export class InputManager {
   // Full-auto: true while trigger / mouse / space is held.
   isTriggerHeld() {
     return this._mouseHeld || this._spaceHeld || this._triggerHeld || this._triggerHeldLeft;
+  }
+
+  // Rising-edge of reload button (R key or VR A button).
+  consumeReload() {
+    const v = this._reloadJustPressed;
+    this._reloadJustPressed = false;
+    return v;
   }
 
   // Rising-edge of VR right trigger (for console button presses).
