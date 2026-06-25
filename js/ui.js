@@ -77,7 +77,7 @@ export class UIManager {
     ctx.fillRect(14, 42, (W - 28) * (baseHP / 100), 12);
     ctx.fillStyle = '#4488aa';
     ctx.font = '10px monospace';
-    ctx.fillText('BASE CORE', 14, 68);
+    ctx.fillText('PLAYER HEALTH', 14, 68);
 
     // Abilities
     const aKeys = ['scan', 'emp', 'turret'];

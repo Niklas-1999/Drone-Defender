@@ -1,6 +1,8 @@
 import { Drone } from './drone.js';
 
-// Wave definitions: each wave is an array of { type, delay } entries.
+// Drones spawn in a forward arc (±65° from player's -Z look direction).
+const HALF_ARC = 65 * (Math.PI / 180);
+
 function buildWaveConfig(waveNumber) {
   const w = waveNumber;
   const config = [];
@@ -18,19 +20,16 @@ function buildWaveConfig(waveNumber) {
 }
 
 export class WaveManager {
-  constructor(scene, baseCorePos) {
-    this._scene       = scene;
-    this._baseCorePos = baseCorePos;
-
-    this._config      = [];   // spawn queue for current wave
-    this._spawnIndex  = 0;
-    this._waveTimer   = 0;
-    this._complete    = true;
-    this._nextTimer   = 0;    // countdown before starting next wave
-    this._nextCb      = null;
+  constructor(scene) {
+    this._scene      = scene;
+    this._config     = [];
+    this._spawnIndex = 0;
+    this._waveTimer  = 0;
+    this._complete   = true;
+    this._nextTimer  = 0;
+    this._nextCb     = null;
   }
 
-  // ── Start a wave ──────────────────────────────────────────────
   startWave(waveNumber) {
     this._config     = buildWaveConfig(waveNumber);
     this._spawnIndex = 0;
@@ -40,20 +39,14 @@ export class WaveManager {
     this._nextCb     = null;
   }
 
-  // ── Schedule next wave after a delay ─────────────────────────
-  // (called by Game once all drones are dead)
   scheduleNext(callback, delaySec) {
-    if (this._nextCb) return; // already scheduled
+    if (this._nextCb) return;
     this._nextTimer = delaySec;
     this._nextCb    = callback;
   }
 
-  isComplete() {
-    return this._complete;
-  }
+  isComplete() { return this._complete; }
 
-  // ── Per-frame update ──────────────────────────────────────────
-  // Returns an array of newly spawned Drone instances.
   update(dt) {
     if (this._nextCb) {
       this._nextTimer -= dt;
@@ -68,33 +61,31 @@ export class WaveManager {
     if (this._complete) return [];
 
     this._waveTimer += dt;
-    const newDrones = [];
+    const spawned = [];
 
     while (
       this._spawnIndex < this._config.length &&
       this._config[this._spawnIndex].delay <= this._waveTimer
     ) {
-      newDrones.push(this._spawnDrone(this._config[this._spawnIndex].type));
+      spawned.push(this._spawnDrone(this._config[this._spawnIndex].type));
       this._spawnIndex++;
     }
 
-    // Mark wave spawning done (all entries dispatched)
-    if (this._spawnIndex >= this._config.length) {
-      this._complete = true;
-    }
-
-    return newDrones;
+    if (this._spawnIndex >= this._config.length) this._complete = true;
+    return spawned;
   }
 
-  // ── Spawn one drone at a random direction ─────────────────────
   _spawnDrone(type) {
-    const angle = Math.random() * Math.PI * 2;
-    const dist  = 75 + Math.random() * 30;
+    // Random angle within forward arc
+    const angle = (Math.random() - 0.5) * HALF_ARC * 2;
+    const dist  = 45 + Math.random() * 25;
+
+    // Forward = -Z, so x = sin(angle)*dist, z = -cos(angle)*dist
     const drone = new Drone(type, this._scene);
     drone.group.position.set(
-      Math.cos(angle) * dist,
-      3.5 + Math.random() * 5,
-      Math.sin(angle) * dist
+      Math.sin(angle) * dist,
+      3.5 + Math.random() * 4,
+      -Math.cos(angle) * dist
     );
     return drone;
   }
