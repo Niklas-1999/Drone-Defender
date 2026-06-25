@@ -8,8 +8,6 @@ import { ProjectileManager } from './projectiles.js';
 import { Turret }            from './turret.js';
 import { InputManager }      from './input.js';
 import { WaveManager }       from './waves.js';
-import { AbilitySystem }     from './abilities.js';
-import { AbilityConsole }    from './abilityConsole.js';
 
 export class Game {
   constructor() {
@@ -20,16 +18,9 @@ export class Game {
     this.drones   = [];
     this.vrMode   = false;
 
-    this.abilities = {
-      scan:   { cd: 30, timer: 0 },
-      emp:    { cd: 45, timer: 0 },
-      turret: { cd: 60, timer: 0 },
-    };
-
     this._lastTime = 0;
-    this._gripsReleasedAfterDeath = false;
-    this._isNight = false;
-    this._skyTransitioning = false; // true while day↔night cross-fade plays
+    this._isNight  = false;
+    this._skyTransitioning = false;
 
     this._initRenderer();
     this._initScene();
@@ -110,12 +101,6 @@ export class Game {
     );
 
     this.waves = new WaveManager(this.scene);
-
-    this.abilitySystem = new AbilitySystem(
-      this.scene, this.audio, this.particles
-    );
-
-    this.abilityConsole = new AbilityConsole(this.cameraRig);
   }
 
   // ── Music ─────────────────────────────────────────────────────
@@ -186,67 +171,66 @@ export class Game {
 
     if (panelState === 'menu') {
       ctx.fillStyle = '#00ddff';
-      ctx.font = 'bold 42px monospace';
-      ctx.fillText('VR DRONE DEFENDER', W / 2, 72);
+      ctx.font = 'bold 40px monospace';
+      ctx.fillText('VR DRONE DEFENDER', W / 2, 65);
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 26px monospace';
-      ctx.fillText('Grab the turret with', W / 2, 148);
-      ctx.fillText('BOTH HANDS to start', W / 2, 186);
+      ctx.fillStyle = '#aaaacc';
+      ctx.font = '21px monospace';
+      ctx.fillText('Defend the city from incoming drones', W / 2, 110);
+      ctx.fillText('Grab the turret and open fire', W / 2, 140);
 
       ctx.fillStyle = '#555577';
       ctx.font = '20px monospace';
-      ctx.fillText('────────────────────────', W / 2, 230);
+      ctx.fillText('────────────────────────', W / 2, 170);
 
-      ctx.fillStyle = '#aaaacc';
-      ctx.font = '22px monospace';
-      ctx.fillText('Desktop: Press SPACE', W / 2, 268);
-      ctx.fillText('VR: Grip both handles', W / 2, 304);
+      // START button rect
+      this._drawPanelBtn(ctx, W / 2, 220, 200, 52, '▶  START', '#00ffee', '#002a30');
+
+      ctx.fillStyle = '#666688';
+      ctx.font = '18px monospace';
+      ctx.fillText('VR: aim controller at this panel + trigger', W / 2, 300);
+      ctx.fillText('Desktop: Press SPACE', W / 2, 324);
 
     } else if (panelState === 'gameover') {
-      // Phase 1: show score, tell player to release grips
       ctx.fillStyle = '#ff4444';
       ctx.font = 'bold 52px monospace';
-      ctx.fillText('GAME OVER', W / 2, 78);
+      ctx.fillText('GAME OVER', W / 2, 72);
 
       ctx.fillStyle = '#ffffff';
       ctx.font = '34px monospace';
-      ctx.fillText(`Wave   ${wave}`, W / 2, 148);
-      ctx.fillText(`Score  ${score}`, W / 2, 192);
+      ctx.fillText(`Wave  ${wave}`, W / 2, 142);
+      ctx.fillText(`Score ${score}`, W / 2, 186);
 
       ctx.fillStyle = '#555577';
       ctx.font = '20px monospace';
-      ctx.fillText('────────────────────────', W / 2, 232);
+      ctx.fillText('────────────────────────', W / 2, 220);
 
-      ctx.fillStyle = '#ffcc44';
-      ctx.font = 'bold 22px monospace';
-      ctx.fillText('VR: Release the turret', W / 2, 268);
-      ctx.fillStyle = '#aaaacc';
-      ctx.font = '22px monospace';
-      ctx.fillText('Desktop: Press SPACE', W / 2, 304);
+      // TRY AGAIN button rect
+      this._drawPanelBtn(ctx, W / 2, 272, 240, 52, '↺  TRY AGAIN', '#ffcc44', '#2a1a00');
 
-    } else if (panelState === 'restart') {
-      // Phase 2: grips released — prompt to regrab
-      ctx.fillStyle = '#00ddff';
-      ctx.font = 'bold 42px monospace';
-      ctx.fillText('VR DRONE DEFENDER', W / 2, 72);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 26px monospace';
-      ctx.fillText('Re-grab the turret with', W / 2, 148);
-      ctx.fillText('BOTH HANDS to restart', W / 2, 186);
-
-      ctx.fillStyle = '#555577';
-      ctx.font = '20px monospace';
-      ctx.fillText('────────────────────────', W / 2, 230);
-
-      ctx.fillStyle = '#aaaacc';
-      ctx.font = '22px monospace';
-      ctx.fillText('Desktop: Press SPACE', W / 2, 268);
-      ctx.fillText('VR: Grip both handles', W / 2, 304);
+      ctx.fillStyle = '#666688';
+      ctx.font = '18px monospace';
+      ctx.fillText('Desktop: Press SPACE', W / 2, 324);
     }
 
     this._panelTex.needsUpdate = true;
+  }
+
+  _drawPanelBtn(ctx, cx, cy, bw, bh, label, borderCol, fillCol) {
+    const x = cx - bw / 2, y = cy - bh / 2;
+    ctx.fillStyle = fillCol;
+    ctx.beginPath();
+    ctx.roundRect(x, y, bw, bh, 10);
+    ctx.fill();
+    ctx.strokeStyle = borderCol;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = borderCol;
+    ctx.font = 'bold 26px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, cy);
+    ctx.textBaseline = 'alphabetic';
   }
 
   // ── Start / restart ───────────────────────────────────────────
@@ -261,7 +245,6 @@ export class Game {
     for (const d of this.drones) d.destroy();
     this.drones = [];
     this.projectiles.clear();
-    this.abilitySystem.resetCooldowns(this.abilities);
 
     this._infoPanel.visible = false;
     this.ui.hideOverlay();
@@ -274,20 +257,6 @@ export class Game {
 
     this._startMusic();
     this._startNextWave();
-  }
-
-  // ── Abilities ─────────────────────────────────────────────────
-  useAbility(name) {
-    if (this.state !== 'playing') return;
-    if (this.abilities[name].timer > 0) return;
-    if (!this.audio.initialized) this.audio.init();
-
-    this.audio.abilityActivate();
-    this.abilities[name].timer = this.abilities[name].cd;
-
-    const playerPos = new THREE.Vector3();
-    this.camera.getWorldPosition(playerPos);
-    this.abilitySystem.activate(name, this.drones, playerPos);
   }
 
   // ── Wave management ───────────────────────────────────────────
@@ -322,6 +291,21 @@ export class Game {
     this.audio.waveStart();
   }
 
+  // Returns true if any VR controller ray currently intersects the info panel.
+  _panelRayHit() {
+    const rc = new THREE.Raycaster();
+    const q  = new THREE.Quaternion();
+    for (const ctrl of [this.input.getLeftController(), this.input.getRightController()]) {
+      if (!ctrl) continue;
+      const pos = new THREE.Vector3();
+      ctrl.getWorldPosition(pos);
+      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(ctrl.getWorldQuaternion(q));
+      rc.set(pos, dir.normalize());
+      if (rc.intersectObject(this._infoPanel).length > 0) return true;
+    }
+    return false;
+  }
+
   _gameOver() {
     this.state = 'gameover';
     for (const d of this.drones) d.destroy();
@@ -329,8 +313,6 @@ export class Game {
     this.projectiles.clear();
     if (this.input.mouseLocked) document.exitPointerLock();
     this._stopMusic();
-    // VR must release grips first — start in phase 1 (show score)
-    this._gripsReleasedAfterDeath = false;
     this._drawInfoPanel('gameover', this.score, this.wave);
     this._infoPanel.visible = true;
   }
@@ -343,25 +325,12 @@ export class Game {
     // Input is always polled (needed to detect start in menu/gameover states)
     this.input.update(dt, frame, this.vrMode);
 
-    if (this.state === 'menu') {
-      // First-time start: both grips → begin
-      if (this.vrMode && this.input.areBothGripping()) this.start();
-
-    } else if (this.state === 'gameover') {
-      if (this.vrMode) {
-        if (!this._gripsReleasedAfterDeath) {
-          // Phase 1: waiting for the player to let go of the turret
-          if (!this.input.isGrabbing()) {
-            // Grips released — advance to phase 2 (restart prompt)
-            this._gripsReleasedAfterDeath = true;
-            this._drawInfoPanel('restart', 0, 0);
-          }
-        } else {
-          // Phase 2: grips were released, now wait for both to be grabbed again
-          if (this.input.areBothGripping()) this.start();
-        }
+    if (this.state === 'menu' || this.state === 'gameover') {
+      // VR: aim a controller at the info panel and pull any trigger
+      if (this.vrMode && this.input.consumeTriggerJustPressed()) {
+        if (this._panelRayHit()) this.start();
       }
-      // Desktop: Space → handled in input.js keydown (calls window.game.start())
+      // Desktop: Space → handled in input.js keydown → window.game.start()
 
     } else if (this.state === 'playing') {
       // Sky cross-fade runs during the inter-wave pause — update turret light in sync
@@ -383,31 +352,10 @@ export class Game {
     this.turret.update(dt, this.vrMode, this.input, isFiring);
     this.ui.setAimOnTarget(this.turret.isAimingAtDrone(this.drones));
 
-    // ── Ability console (VR) ──────────────────────────────────
-    let consoleKey = null;
-    if (this.vrMode) {
-      consoleKey = this.abilityConsole.update(
-        this.abilities,
-        this.input.getLeftController(),
-        this.input.getRightController(),
-        this.input.consumeTriggerJustPressed(),
-      );
-      if (consoleKey) this.useAbility(consoleKey);
-    }
-
     // ── Full-auto shooting ────────────────────────────────────
-    if (isFiring && !consoleKey) {
+    if (isFiring) {
       const shot = this.turret.fire(this.vrMode, this.audio);
       if (shot) this.projectiles.firePlayer(shot.muzzlePos, shot.aimDir);
-    }
-
-    // ── Ability key (keyboard / left buttons) ─────────────────
-    const abilityKey = this.input.consumeAbility();
-    if (abilityKey) this.useAbility(abilityKey);
-
-    // ── Cooldowns ─────────────────────────────────────────────
-    for (const ab of Object.values(this.abilities)) {
-      if (ab.timer > 0) ab.timer = Math.max(0, ab.timer - dt);
     }
 
     // ── Wave spawning ─────────────────────────────────────────
@@ -466,10 +414,6 @@ export class Game {
       if (this.playerHP <= 0) { this._gameOver(); return; }
     }
 
-    // ── Abilities ─────────────────────────────────────────────
-    this.abilitySystem.update(dt, this.drones);
-    this.score += this.abilitySystem.consumeKillBonus();
-
     // ── Particles ─────────────────────────────────────────────
     this.particles.update(dt);
 
@@ -480,11 +424,10 @@ export class Game {
 
     // ── UI ────────────────────────────────────────────────────
     this.ui.update({
-      score:     this.score,
-      wave:      this.wave,
-      drones:    this.drones.length,
-      baseHP:    this.playerHP,
-      abilities: this.abilities,
+      score:  this.score,
+      wave:   this.wave,
+      drones: this.drones.length,
+      baseHP: this.playerHP,
     });
   }
 

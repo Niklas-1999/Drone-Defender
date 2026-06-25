@@ -17,8 +17,6 @@ export class InputManager {
     this._triggerHeld        = false;
     this._triggerJustPressed = false;   // VR rising-edge (consumed once)
 
-    this._abilityPending = null;
-
     // VR grip state
     this._gripLeft  = false;
     this._gripRight = false;
@@ -77,9 +75,6 @@ export class InputManager {
         e.preventDefault();
         this._spaceHeld = true;
       }
-      if (e.key === '1') this._abilityPending = 'scan';
-      if (e.key === '2') this._abilityPending = 'emp';
-      if (e.key === '3') this._abilityPending = 'turret';
     });
 
     document.addEventListener('keyup', e => {
@@ -158,16 +153,11 @@ export class InputManager {
       }
 
       if (hand === 'left') {
-        const map = [
-          { idx: 4, key: 'scan' },
-          { idx: 5, key: 'emp'  },
-        ];
-        for (const { idx, key } of map) {
-          const pressed = gp.buttons[idx]?.pressed;
-          const bKey    = `${hand}_${idx}`;
-          if (pressed && !this._buttonWas[bKey]) this._abilityPending = key;
-          this._buttonWas[bKey] = pressed;
-        }
+        // Left trigger also counts as "just pressed" for UI panel interaction
+        const ltrig = (gp.buttons[0]?.value ?? 0) > 0.5;
+        if (ltrig && !this._triggerWas.left) this._triggerJustPressed = true;
+        this._triggerWas.left = ltrig;
+
         if (gp.buttons[1]?.pressed) this._gripLeft = true;
       }
     }
@@ -183,12 +173,6 @@ export class InputManager {
   consumeTriggerJustPressed() {
     const v = this._triggerJustPressed;
     this._triggerJustPressed = false;
-    return v;
-  }
-
-  consumeAbility() {
-    const v = this._abilityPending;
-    this._abilityPending = null;
     return v;
   }
 

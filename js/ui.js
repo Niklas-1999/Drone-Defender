@@ -12,15 +12,7 @@ export class UIManager {
     this._elDrones  = document.getElementById('hud-drones');
     this._elBaseFill = document.getElementById('base-hp-fill');
     this._elAnnounce = document.getElementById('wave-announce');
-    this._elOverlay = document.getElementById('overlay');
-    this._elOverlayTitle = document.getElementById('overlay-title');
-    this._elOverlaySub   = document.getElementById('overlay-sub');
-    this._slotScan   = document.getElementById('slot-scan');
-    this._slotEmp    = document.getElementById('slot-emp');
-    this._slotTurret = document.getElementById('slot-turret');
-    this._cdScan     = document.getElementById('cd-scan');
-    this._cdEmp      = document.getElementById('cd-emp');
-    this._cdTurret   = document.getElementById('cd-turret');
+    this._elOverlay  = document.getElementById('overlay');
     this._crosshair  = document.getElementById('crosshair');
 
     this._announceTimeout = null;
@@ -54,9 +46,9 @@ export class UIManager {
     camera.add(this._vrHUDGroup);
   }
 
-  _drawVRHUD(score, wave, drones, baseHP, abilities) {
+  _drawVRHUD(score, wave, drones, baseHP) {
     const ctx = this._vrCtx;
-    const W = 512, H = 160;
+    const W = 512, H = 110;
     ctx.clearRect(0, 0, W, H);
 
     ctx.fillStyle = 'rgba(0,10,20,0.75)';
@@ -70,29 +62,14 @@ export class UIManager {
     ctx.fillText(`WAVE   ${wave}`, 200, 28);
     ctx.fillText(`DRONES ${drones}`, 370, 28);
 
-    // Base HP bar
+    // HP bar
     ctx.fillStyle = '#334';
-    ctx.fillRect(14, 42, W - 28, 12);
+    ctx.fillRect(14, 42, W - 28, 14);
     ctx.fillStyle = baseHP > 30 ? '#ff8800' : '#ff2200';
-    ctx.fillRect(14, 42, (W - 28) * (baseHP / 100), 12);
+    ctx.fillRect(14, 42, (W - 28) * (baseHP / 100), 14);
     ctx.fillStyle = '#4488aa';
     ctx.font = '10px monospace';
-    ctx.fillText('PLAYER HEALTH', 14, 68);
-
-    // Abilities
-    const aKeys = ['scan', 'emp', 'turret'];
-    const aNames = ['SCAN', 'EMP', 'TURRET'];
-    aKeys.forEach((k, i) => {
-      const ab  = abilities[k];
-      const x   = 14 + i * 164;
-      const rdy = ab.timer <= 0;
-      ctx.fillStyle = rdy ? '#00ff88' : '#664';
-      ctx.font = 'bold 13px monospace';
-      ctx.fillText(aNames[i], x, 98);
-      ctx.fillStyle = rdy ? '#00ff88' : '#ffaa00';
-      ctx.font = '12px monospace';
-      ctx.fillText(rdy ? 'READY' : `${Math.ceil(ab.timer)}s`, x, 118);
-    });
+    ctx.fillText('PLAYER HEALTH', 14, 72);
 
     this._vrTexture.needsUpdate = true;
   }
@@ -102,42 +79,30 @@ export class UIManager {
   enterVR() {
     this._vrMode = true;
     this._vrHUDGroup.visible = true;
-    document.getElementById('ui').style.display         = 'none';
-    document.getElementById('abilities-bar').style.display = 'none';
-    document.getElementById('crosshair').style.display  = 'none';
+    document.getElementById('ui').style.display        = 'none';
+    document.getElementById('crosshair').style.display = 'none';
     document.getElementById('base-hp-bar').style.display = 'none';
   }
 
   exitVR() {
     this._vrMode = false;
     this._vrHUDGroup.visible = false;
-    document.getElementById('ui').style.display         = '';
-    document.getElementById('abilities-bar').style.display = '';
-    document.getElementById('crosshair').style.display  = '';
+    document.getElementById('ui').style.display        = '';
+    document.getElementById('crosshair').style.display = '';
     document.getElementById('base-hp-bar').style.display = '';
   }
 
   // Called every frame with current game state.
-  update({ score, wave, drones, baseHP, abilities }) {
+  update({ score, wave, drones, baseHP }) {
     if (this._vrMode) {
-      this._drawVRHUD(score, wave, drones, baseHP, abilities);
+      this._drawVRHUD(score, wave, drones, baseHP);
       return;
     }
 
-    this._elScore.textContent  = score;
-    this._elWave.textContent   = wave || '–';
-    this._elDrones.textContent = drones;
+    this._elScore.textContent    = score;
+    this._elWave.textContent     = wave || '–';
+    this._elDrones.textContent   = drones;
     this._elBaseFill.style.width = baseHP + '%';
-
-    // Ability slots
-    const slots  = { scan: this._slotScan, emp: this._slotEmp, turret: this._slotTurret };
-    const timers = { scan: this._cdScan,   emp: this._cdEmp,   turret: this._cdTurret   };
-    for (const [k, slot] of Object.entries(slots)) {
-      const ab  = abilities[k];
-      const rdy = ab.timer <= 0;
-      slot.className  = 'ability-slot ' + (rdy ? 'ready' : 'on-cooldown');
-      timers[k].textContent = rdy ? 'READY' : Math.ceil(ab.timer) + 's';
-    }
   }
 
   setAimOnTarget(onTarget) {
