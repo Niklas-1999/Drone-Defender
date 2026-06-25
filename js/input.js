@@ -107,6 +107,7 @@ export class InputManager {
   }
 
   _addControllerVisual(ctrl) {
+    // Pointer ray
     const geo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(0, 0, -1),
@@ -114,10 +115,13 @@ export class InputManager {
     ctrl.add(new THREE.Line(geo,
       new THREE.LineBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.45 })
     ));
-    ctrl.add(new THREE.Mesh(
-      new THREE.BoxGeometry(0.055, 0.09, 0.11),
-      new THREE.MeshLambertMaterial({ color: 0x2a2a2a })
-    ));
+
+    // Sphere hand — replaces the black box that obscured the turret handles
+    const hand = new THREE.Mesh(
+      new THREE.SphereGeometry(0.042, 12, 10),
+      new THREE.MeshLambertMaterial({ color: 0x1a1a1a })
+    );
+    ctrl.add(hand);
   }
 
   // ── Per-frame update ──────────────────────────────────────────

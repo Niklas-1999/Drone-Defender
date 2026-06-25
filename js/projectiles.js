@@ -99,7 +99,7 @@ export class ProjectileManager {
       let hit = false;
       for (const d of drones) {
         if (d.dead) continue;
-        if (b.mesh.position.distanceTo(d.group.position) < d.spec.size * 1.0) {
+        if (b.mesh.position.distanceTo(d.group.position) < d.spec.size * 1.3) {
           hitDrones.add(d);
           hit = true;
           break;

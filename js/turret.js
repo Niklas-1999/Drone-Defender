@@ -23,11 +23,11 @@ export class Turret {
   // ── Gun model ─────────────────────────────────────────────────
   _build() {
     const mat = {
-      dark:   new THREE.MeshLambertMaterial({ color: 0x1a2230 }),
-      mid:    new THREE.MeshLambertMaterial({ color: 0x2e4055 }),
-      light:  new THREE.MeshLambertMaterial({ color: 0x4a6070 }),
-      accent: new THREE.MeshBasicMaterial({ color: 0x00aaff }),
-      barrel: new THREE.MeshLambertMaterial({ color: 0x2a3540 }),
+      dark:   new THREE.MeshLambertMaterial({ color: 0x2e3a28 }),  // olive-grey
+      mid:    new THREE.MeshLambertMaterial({ color: 0x485840 }),  // medium olive
+      light:  new THREE.MeshLambertMaterial({ color: 0x6a7a5a }),  // light olive
+      accent: new THREE.MeshBasicMaterial({ color: 0x00ccff }),
+      barrel: new THREE.MeshLambertMaterial({ color: 0x1e2820 }),  // dark barrel
     };
 
     this._group = new THREE.Group();
@@ -214,10 +214,14 @@ export class Turret {
     this._flashTimer = 0.06;
 
     if (vrMode) {
+      // Vibrate right controller always (firing hand),
+      // and left controller too if it is gripping the turret.
       const session = this._renderer.xr.getSession();
       session?.inputSources.forEach(src => {
-        if (src.handedness === 'right')
+        const gripping = src.gamepad?.buttons[1]?.pressed;
+        if (src.handedness === 'right' || (src.handedness === 'left' && gripping)) {
           src.gamepad?.hapticActuators?.[0]?.pulse(0.35, 30);
+        }
       });
     }
 
