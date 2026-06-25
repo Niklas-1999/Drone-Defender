@@ -10,30 +10,25 @@ class Projectile {
     this._traveled = 0;
     this.alive    = true;
 
-    // Bullet mesh
-    const geo = new THREE.SphereGeometry(size, 5, 4);
-    this.mesh = new THREE.Mesh(geo,
-      new THREE.MeshBasicMaterial({ color })
-    );
+    // Root group (no sphere — trail only)
+    this.mesh = new THREE.Group();
     this.mesh.position.copy(origin);
 
-    // Short glow trail (capsule stretched behind travel direction)
+    // Glow trail stretched behind the travel direction
     const trailLen = speed * 0.04;
     const trail = new THREE.Mesh(
       new THREE.CylinderGeometry(size * 0.35, size * 0.35, trailLen, 4),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35 })
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55 })
     );
     trail.rotation.x = Math.PI / 2;
-    trail.position.z = trailLen * 0.5; // behind the bullet (+Z = away from dir)
+    trail.position.set(0, 0, -trailLen * 0.5); // sit behind centre
     this.mesh.add(trail);
 
-    // Orient bullet mesh so +Z = forward
+    // Orient group so +Z = forward
     const q = new THREE.Quaternion().setFromUnitVectors(
       new THREE.Vector3(0, 0, 1), this._dir
     );
     this.mesh.quaternion.copy(q);
-    // Re-position trail: it sits behind in the -dir direction
-    trail.position.set(0, 0, -trailLen * 0.5);
 
     scene.add(this.mesh);
   }
