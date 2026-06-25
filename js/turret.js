@@ -81,6 +81,15 @@ export class Turret {
     this._addSideHandle(this._barrelPivot, mat, -1);
     this._addSideHandle(this._barrelPivot, mat,  1);
 
+    // Receiver block — fills the gap between housing front (Z=-0.11)
+    // and the barrel shroud rear (Z=-0.24) so no hollow is visible.
+    const receiver = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.105, 0.105, 0.15, 10), mat.mid
+    );
+    receiver.rotation.x = Math.PI / 2;
+    receiver.position.z = -0.185; // spans Z=-0.11 to Z=-0.26
+    this._barrelPivot.add(receiver);
+
     // Cooling shroud around barrels
     const shroud = new THREE.Mesh(
       new THREE.CylinderGeometry(0.105, 0.105, 0.72, 10, 1, true), mat.mid

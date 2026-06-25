@@ -27,6 +27,7 @@ export class Game {
     };
 
     this._lastTime = 0;
+    this._gripsReleasedAfterDeath = false; // VR: must release before restarting
 
     this._initRenderer();
     this._initScene();
@@ -193,24 +194,48 @@ export class Game {
       ctx.font = '22px monospace';
       ctx.fillText('Desktop: Press SPACE', W / 2, 268);
       ctx.fillText('VR: Grip both handles', W / 2, 304);
+
     } else if (panelState === 'gameover') {
+      // Phase 1: show score, tell player to release grips
       ctx.fillStyle = '#ff4444';
-      ctx.font = 'bold 56px monospace';
-      ctx.fillText('GAME OVER', W / 2, 84);
+      ctx.font = 'bold 52px monospace';
+      ctx.fillText('GAME OVER', W / 2, 78);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = '32px monospace';
-      ctx.fillText(`Wave  ${wave}`, W / 2, 156);
-      ctx.fillText(`Score ${score}`, W / 2, 200);
+      ctx.font = '34px monospace';
+      ctx.fillText(`Wave   ${wave}`, W / 2, 148);
+      ctx.fillText(`Score  ${score}`, W / 2, 192);
 
       ctx.fillStyle = '#555577';
       ctx.font = '20px monospace';
-      ctx.fillText('────────────────────────', W / 2, 244);
+      ctx.fillText('────────────────────────', W / 2, 232);
+
+      ctx.fillStyle = '#ffcc44';
+      ctx.font = 'bold 22px monospace';
+      ctx.fillText('VR: Release the turret', W / 2, 268);
+      ctx.fillStyle = '#aaaacc';
+      ctx.font = '22px monospace';
+      ctx.fillText('Desktop: Press SPACE', W / 2, 304);
+
+    } else if (panelState === 'restart') {
+      // Phase 2: grips released — prompt to regrab
+      ctx.fillStyle = '#00ddff';
+      ctx.font = 'bold 42px monospace';
+      ctx.fillText('VR DRONE DEFENDER', W / 2, 72);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 26px monospace';
+      ctx.fillText('Re-grab the turret with', W / 2, 148);
+      ctx.fillText('BOTH HANDS to restart', W / 2, 186);
+
+      ctx.fillStyle = '#555577';
+      ctx.font = '20px monospace';
+      ctx.fillText('────────────────────────', W / 2, 230);
 
       ctx.fillStyle = '#aaaacc';
       ctx.font = '22px monospace';
-      ctx.fillText('Grab with both hands', W / 2, 280);
-      ctx.fillText('Desktop: Press SPACE', W / 2, 314);
+      ctx.fillText('Desktop: Press SPACE', W / 2, 268);
+      ctx.fillText('VR: Grip both handles', W / 2, 304);
     }
 
     this._panelTex.needsUpdate = true;
@@ -265,6 +290,8 @@ export class Game {
     this.projectiles.clear();
     if (this.input.mouseLocked) document.exitPointerLock();
     this._stopMusic();
+    // VR must release grips first — start in phase 1 (show score)
+    this._gripsReleasedAfterDeath = false;
     this._drawInfoPanel('gameover', this.score, this.wave);
     this._infoPanel.visible = true;
   }
@@ -277,11 +304,26 @@ export class Game {
     // Input is always polled (needed to detect start in menu/gameover states)
     this.input.update(dt, frame, this.vrMode);
 
-    if (this.state === 'menu' || this.state === 'gameover') {
-      // VR: grip both handles to start / restart
-      if (this.vrMode && this.input.areBothGripping()) {
-        this.start();
+    if (this.state === 'menu') {
+      // First-time start: both grips → begin
+      if (this.vrMode && this.input.areBothGripping()) this.start();
+
+    } else if (this.state === 'gameover') {
+      if (this.vrMode) {
+        if (!this._gripsReleasedAfterDeath) {
+          // Phase 1: waiting for the player to let go of the turret
+          if (!this.input.isGrabbing()) {
+            // Grips released — advance to phase 2 (restart prompt)
+            this._gripsReleasedAfterDeath = true;
+            this._drawInfoPanel('restart', 0, 0);
+          }
+        } else {
+          // Phase 2: grips were released, now wait for both to be grabbed again
+          if (this.input.areBothGripping()) this.start();
+        }
       }
+      // Desktop: Space → handled in input.js keydown (calls window.game.start())
+
     } else if (this.state === 'playing') {
       this._update(dt, frame);
     }
