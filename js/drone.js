@@ -4,17 +4,14 @@ export const DRONE_TYPES = {
   scout: {
     name: 'scout',   hp: 1, speed: 7,   size: 0.38, damage: 8,
     color: 0xff3322, points: 100, armLen: 0.28,
-    shootInterval: 4.0, shootRange: 30,
   },
   warrior: {
     name: 'warrior', hp: 3, speed: 4.0, size: 0.55, damage: 18,
     color: 0xff6600, points: 250, armLen: 0.40,
-    shootInterval: 2.5, shootRange: 40,
   },
   titan: {
     name: 'titan',   hp: 8, speed: 2.0, size: 0.85, damage: 35,
     color: 0x990000, points: 500, armLen: 0.62,
-    shootInterval: 1.5, shootRange: 55,
   },
 };
 
@@ -42,8 +39,6 @@ export class Drone {
 
     this._stunTimer  = 0;
     this._scanTimer  = 0;
-    // Stagger initial shoot timers so not all drones fire at once
-    this._shootTimer = this.spec.shootInterval * (0.4 + Math.random() * 0.6);
 
     this.group = new THREE.Group();
     this._buildMesh();
@@ -127,9 +122,9 @@ export class Drone {
   }
 
   // ── Per-frame update ──────────────────────────────────────────
-  // Returns { dist, shot: { from, dir } | null }
+  // Returns { dist }
   update(dt, targetPos, camera) {
-    if (this.dead) return { dist: Infinity, shot: null };
+    if (this.dead) return { dist: Infinity };
 
     // Stun
     if (this._stunTimer > 0) {
@@ -168,23 +163,7 @@ export class Drone {
       this._hpBar.mesh.lookAt(camera.getWorldPosition(new THREE.Vector3()));
     }
 
-    // Shooting
-    let shot = null;
-    if (dist <= this.spec.shootRange && this._stunTimer <= 0) {
-      this._shootTimer -= dt;
-      if (this._shootTimer <= 0) {
-        this._shootTimer = this.spec.shootInterval;
-        const from = this.group.position.clone().add(new THREE.Vector3(0, 0.2, 0));
-        const dir  = new THREE.Vector3().subVectors(targetPos, from).normalize();
-        // Slight spread so bullets aren't perfectly accurate
-        dir.x += (Math.random() - 0.5) * 0.08;
-        dir.y += (Math.random() - 0.5) * 0.06;
-        dir.normalize();
-        shot = { from, dir };
-      }
-    }
-
-    return { dist, shot };
+    return { dist };
   }
 
   destroy() {

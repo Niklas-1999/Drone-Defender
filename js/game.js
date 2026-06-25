@@ -336,8 +336,7 @@ export class Game {
       const drone = this.drones[i];
       if (drone.dead) { this.drones.splice(i, 1); continue; }
 
-      const { dist, shot } = drone.update(dt, playerPos, this.camera);
-      if (shot) this.projectiles.fireEnemy(shot.from, shot.dir);
+      const { dist } = drone.update(dt, playerPos, this.camera);
 
       if (dist < 1.2) {
         this.playerHP -= drone.spec.damage;
