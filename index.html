@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>VR Drone Defender</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ── Top HUD ── -->
+  <div id="ui">
+    <div id="hud-top">
+      <div class="hud-panel">
+        <div class="hud-label">SCORE</div>
+        <div id="hud-score" class="hud-value">0</div>
+      </div>
+      <div class="hud-panel" style="text-align:center">
+        <div class="hud-label">WAVE</div>
+        <div id="hud-wave" class="hud-value">–</div>
+      </div>
+      <div class="hud-panel" style="text-align:right">
+        <div class="hud-label">DRONES</div>
+        <div id="hud-drones" class="hud-value">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Ability bar ── -->
+  <div id="abilities-bar">
+    <div class="ability-slot ready" id="slot-scan" onclick="window.game?.useAbility('scan')">
+      <div class="ability-key">[1]</div>
+      <div class="ability-name">SCAN</div>
+      <div class="ability-timer" id="cd-scan">READY</div>
+    </div>
+    <div class="ability-slot ready" id="slot-emp" onclick="window.game?.useAbility('emp')">
+      <div class="ability-key">[2]</div>
+      <div class="ability-name">EMP</div>
+      <div class="ability-timer" id="cd-emp">READY</div>
+    </div>
+    <div class="ability-slot ready" id="slot-turret" onclick="window.game?.useAbility('turret')">
+      <div class="ability-key">[3]</div>
+      <div class="ability-name">TURRET</div>
+      <div class="ability-timer" id="cd-turret">READY</div>
+    </div>
+  </div>
+
+  <!-- ── Crosshair ── -->
+  <div id="crosshair"></div>
+
+  <!-- ── Base HP ── -->
+  <div id="base-hp-bar">
+    <div class="bar-label">BASE CORE</div>
+    <div class="bar-track">
+      <div id="base-hp-fill" class="bar-fill"></div>
+    </div>
+  </div>
+
+  <!-- ── Wave announcement ── -->
+  <div id="wave-announce"></div>
+
+  <!-- ── Start / Game-over overlay ── -->
+  <div id="overlay">
+    <h1 id="overlay-title">VR DRONE DEFENDER</h1>
+    <p id="overlay-sub">Protect the base core from drone waves</p>
+    <p class="overlay-hint">
+      Desktop: Mouse to aim &nbsp;·&nbsp; Click to shoot &nbsp;·&nbsp; 1 / 2 / 3 for abilities<br>
+      VR: Point right controller &nbsp;·&nbsp; Trigger to shoot &nbsp;·&nbsp; X / Y / Grip for abilities
+    </p>
+    <button id="overlay-btn" onclick="window.game?.start()">START GAME</button>
+  </div>
+
+  <!-- ── VR button injected by Three.js ── -->
+  <div id="vr-button-container"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

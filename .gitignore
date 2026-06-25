@@ -1,0 +1,11 @@
+# Design documents (keep local only)
+*.pdf
+
+# Claude Code session files
+.claude/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

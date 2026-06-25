@@ -1,0 +1,238 @@
+/* ── Reset & base ── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #000;
+  overflow: hidden;
+  font-family: 'Courier New', Courier, monospace;
+  color: #00ccff;
+  user-select: none;
+}
+
+canvas { display: block; }
+
+/* ── Top HUD ── */
+#ui {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  pointer-events: none;
+  z-index: 50;
+}
+
+#hud-top {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 20px;
+  gap: 12px;
+}
+
+.hud-panel {
+  background: rgba(0, 15, 30, 0.75);
+  border: 1px solid rgba(0, 204, 255, 0.25);
+  border-radius: 4px;
+  padding: 8px 18px;
+  backdrop-filter: blur(4px);
+}
+
+.hud-label {
+  font-size: 10px;
+  color: #4488aa;
+  letter-spacing: 2px;
+  margin-bottom: 2px;
+}
+
+.hud-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #00ccff;
+  letter-spacing: 1px;
+}
+
+/* ── Ability bar ── */
+#abilities-bar {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  z-index: 50;
+}
+
+.ability-slot {
+  background: rgba(0, 15, 30, 0.85);
+  border: 2px solid rgba(0, 204, 255, 0.3);
+  border-radius: 6px;
+  padding: 8px 16px;
+  min-width: 90px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  backdrop-filter: blur(4px);
+}
+
+.ability-slot:hover { border-color: rgba(0, 204, 255, 0.7); }
+
+.ability-slot.ready  { border-color: rgba(0, 204, 255, 0.6); }
+.ability-slot.active { border-color: #ffaa00; background: rgba(255, 170, 0, 0.15); }
+.ability-slot.on-cooldown { border-color: rgba(80, 80, 80, 0.5); }
+.ability-slot.on-cooldown .ability-name { color: #557; }
+
+.ability-key  { font-size: 10px; color: #4488aa; margin-bottom: 2px; }
+.ability-name { font-size: 13px; font-weight: bold; letter-spacing: 1px; }
+.ability-timer { font-size: 13px; color: #ffaa00; margin-top: 2px; }
+.ability-slot.ready .ability-timer { color: #00ff88; }
+
+/* ── Crosshair ── */
+#crosshair {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 22px; height: 22px;
+  pointer-events: none;
+  z-index: 60;
+}
+
+#crosshair::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 50%;
+  width: 2px; height: 100%;
+  background: rgba(255,255,255,0.85);
+  transform: translateX(-50%);
+}
+
+#crosshair::after {
+  content: '';
+  position: absolute;
+  left: 0; top: 50%;
+  width: 100%; height: 2px;
+  background: rgba(255,255,255,0.85);
+  transform: translateY(-50%);
+}
+
+#crosshair.on-target::before,
+#crosshair.on-target::after { background: #ff3333; }
+
+/* ── Base HP bar ── */
+#base-hp-bar {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.bar-label {
+  font-size: 10px;
+  color: #4488aa;
+  letter-spacing: 2px;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.bar-track {
+  background: rgba(0,0,0,0.6);
+  border: 1px solid rgba(80,80,80,0.5);
+  border-radius: 3px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ff4400, #ff8800);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+/* ── Wave announcement ── */
+#wave-announce {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 42px;
+  font-weight: bold;
+  color: #00ccff;
+  text-shadow: 0 0 30px #00ccff, 0 0 60px #0066aa;
+  letter-spacing: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  z-index: 70;
+}
+
+/* ── Overlay (menu / game over) ── */
+#overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 5, 15, 0.82);
+  backdrop-filter: blur(6px);
+  z-index: 90;
+  text-align: center;
+  gap: 14px;
+  padding: 24px;
+}
+
+#overlay.hidden { display: none; }
+
+#overlay-title {
+  font-size: 52px;
+  font-weight: bold;
+  color: #00ccff;
+  text-shadow: 0 0 30px #00ccff;
+  letter-spacing: 4px;
+}
+
+#overlay-sub {
+  font-size: 16px;
+  color: #6699bb;
+  max-width: 480px;
+}
+
+.overlay-hint {
+  font-size: 13px;
+  color: #3a5a6a;
+  line-height: 1.8;
+  max-width: 520px;
+}
+
+#overlay-btn {
+  margin-top: 12px;
+  padding: 14px 40px;
+  background: transparent;
+  border: 2px solid #00ccff;
+  color: #00ccff;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+#overlay-btn:hover {
+  background: rgba(0, 204, 255, 0.12);
+  box-shadow: 0 0 20px rgba(0, 204, 255, 0.4);
+}
+
+/* ── VR button (injected by Three.js – override some defaults) ── */
+#vr-button-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 100;
+}
+
+#vr-button-container button {
+  font-family: 'Courier New', monospace !important;
+  letter-spacing: 1px !important;
+}
