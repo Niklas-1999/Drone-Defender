@@ -17,7 +17,7 @@ class Projectile {
     // Glow trail stretched behind the travel direction
     const trailLen = speed * 0.04;
     const trail = new THREE.Mesh(
-      new THREE.CylinderGeometry(size * 0.35, size * 0.35, trailLen, 4),
+      new THREE.CylinderGeometry(size * 0.12, size * 0.12, trailLen, 4),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55 })
     );
     trail.rotation.x = Math.PI / 2;
