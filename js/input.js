@@ -7,20 +7,26 @@ export class InputManager {
     this._camera     = camera;
     this._scene      = scene;
 
-    this.mouseLocked     = false;
-    this._yaw            = 0;
-    this._pitch          = 0;
-    this._shotPending    = false;
+    this.mouseLocked = false;
+    this._yaw        = 0;
+    this._pitch      = 0;
+
+    // Full-auto fire state
+    this._mouseHeld          = false;
+    this._spaceHeld          = false;
+    this._triggerHeld        = false;
+    this._triggerJustPressed = false;   // VR rising-edge (consumed once)
+
     this._abilityPending = null;
 
-    // VR grip state (tracked per frame for isGrabbing())
+    // VR grip state
     this._gripLeft  = false;
     this._gripRight = false;
 
     this._rightController = null;
     this._leftController  = null;
-    this._triggerWas  = { left: false, right: false };
-    this._buttonWas   = {};
+    this._triggerWas      = { left: false, right: false };
+    this._buttonWas       = {};
 
     this._setupDesktop();
     this._setupVRControllers();
@@ -35,27 +41,49 @@ export class InputManager {
       this._pitch  = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, this._pitch));
     });
 
-    document.addEventListener('click', () => {
-      if (!this.mouseLocked && window.game?.state === 'playing') {
+    // Left-click: lock pointer (first click) or hold-to-fire
+    document.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      if (!this.mouseLocked && window.game?.state !== 'menu' && window.game?.state !== 'gameover') {
         document.body.requestPointerLock();
       } else if (this.mouseLocked) {
-        this._shotPending = true;
+        this._mouseHeld = true;
       }
+    });
+    document.addEventListener('mouseup', e => {
+      if (e.button === 0) this._mouseHeld = false;
     });
 
     document.addEventListener('pointerlockchange', () => {
       this.mouseLocked = !!document.pointerLockElement;
+      if (!this.mouseLocked) this._mouseHeld = false;
     });
 
     document.addEventListener('keydown', e => {
-      if (window.game?.state !== 'playing') return;
+      const state = window.game?.state;
+
+      // Start / restart from menu or gameover
+      if ((e.key === ' ' || e.code === 'Space') &&
+          (state === 'menu' || state === 'gameover')) {
+        e.preventDefault();
+        if (!this.mouseLocked) document.body.requestPointerLock();
+        window.game?.start();
+        return;
+      }
+
+      if (state !== 'playing') return;
+
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
-        this._shotPending = true;
+        this._spaceHeld = true;
       }
       if (e.key === '1') this._abilityPending = 'scan';
       if (e.key === '2') this._abilityPending = 'emp';
       if (e.key === '3') this._abilityPending = 'turret';
+    });
+
+    document.addEventListener('keyup', e => {
+      if (e.key === ' ' || e.code === 'Space') this._spaceHeld = false;
     });
   }
 
@@ -83,16 +111,13 @@ export class InputManager {
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(0, 0, -1),
     ]);
-    const line = new THREE.Line(geo,
+    ctrl.add(new THREE.Line(geo,
       new THREE.LineBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.45 })
-    );
-    ctrl.add(line);
-
-    const grip = new THREE.Mesh(
+    ));
+    ctrl.add(new THREE.Mesh(
       new THREE.BoxGeometry(0.055, 0.09, 0.11),
       new THREE.MeshLambertMaterial({ color: 0x2a2a2a })
-    );
-    ctrl.add(grip);
+    ));
   }
 
   // ── Per-frame update ──────────────────────────────────────────
@@ -112,6 +137,7 @@ export class InputManager {
 
     this._gripLeft  = false;
     this._gripRight = false;
+    this._triggerJustPressed = false;
 
     for (const src of session.inputSources) {
       const gp   = src.gamepad;
@@ -119,17 +145,15 @@ export class InputManager {
       if (!gp) continue;
 
       if (hand === 'right') {
-        // Trigger → fire
-        const trig = gp.buttons[0]?.value > 0.5;
-        if (trig && !this._triggerWas.right) this._shotPending = true;
+        const trig = (gp.buttons[0]?.value ?? 0) > 0.5;
+        this._triggerHeld = trig;
+        if (trig && !this._triggerWas.right) this._triggerJustPressed = true;
         this._triggerWas.right = trig;
 
-        // Grip → grab turret
         if (gp.buttons[1]?.pressed) this._gripRight = true;
       }
 
       if (hand === 'left') {
-        // X (idx 4) → scan,  Y (idx 5) → emp
         const map = [
           { idx: 4, key: 'scan' },
           { idx: 5, key: 'emp'  },
@@ -140,22 +164,22 @@ export class InputManager {
           if (pressed && !this._buttonWas[bKey]) this._abilityPending = key;
           this._buttonWas[bKey] = pressed;
         }
-
-        // Grip → grab turret
         if (gp.buttons[1]?.pressed) this._gripLeft = true;
       }
     }
   }
 
-  // ── Consumed-once accessors ───────────────────────────────────
-  consumeShot() {
-    const v = this._shotPending;
-    this._shotPending = false;
-    return v;
+  // ── Fire state accessors ──────────────────────────────────────
+  // Full-auto: true while trigger / mouse / space is held.
+  isTriggerHeld() {
+    return this._mouseHeld || this._spaceHeld || this._triggerHeld;
   }
 
-  peekShot() {
-    return this._shotPending;
+  // Rising-edge of VR right trigger (for console button presses).
+  consumeTriggerJustPressed() {
+    const v = this._triggerJustPressed;
+    this._triggerJustPressed = false;
+    return v;
   }
 
   consumeAbility() {
@@ -164,11 +188,16 @@ export class InputManager {
     return v;
   }
 
-  // ── Grab state ────────────────────────────────────────────────
-  // Returns true if either VR grip button is pressed.
-  isGrabbing()      { return this._gripLeft || this._gripRight; }
-  isGrippingLeft()  { return this._gripLeft;  }
-  isGrippingRight() { return this._gripRight; }
+  // Legacy single-shot (still used by desktop click path above)
+  consumeShot() { return false; }
+
+  // ── Grip / grab state ─────────────────────────────────────────
+  isGrabbing()       { return this._gripLeft || this._gripRight; }
+  areBothGripping()  { return this._gripLeft && this._gripRight; }
+  isGrippingLeft()   { return this._gripLeft;  }
+  isGrippingRight()  { return this._gripRight; }
+
+  peekShot() { return false; } // kept for compat, no longer used
 
   // ── VR controller references ──────────────────────────────────
   getRightController() { return this._rightController; }

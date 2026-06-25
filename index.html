@@ -68,15 +68,11 @@
   <!-- ── Wave announcement ── -->
   <div id="wave-announce"></div>
 
-  <!-- ── Start / Game-over overlay ── -->
-  <div id="overlay">
+  <!-- Overlay kept for ui.js compat but hidden; 3-D panel handles start/game-over -->
+  <div id="overlay" class="hidden" style="display:none">
     <h1 id="overlay-title">VR DRONE DEFENDER</h1>
-    <p id="overlay-sub">Protect the base core from drone waves</p>
-    <p class="overlay-hint">
-      Desktop: Mouse to aim &nbsp;·&nbsp; Click to shoot &nbsp;·&nbsp; 1 / 2 / 3 for abilities<br>
-      VR: Point right controller &nbsp;·&nbsp; Trigger to shoot &nbsp;·&nbsp; X / Y / Grip for abilities
-    </p>
-    <button id="overlay-btn" onclick="window.game?.start()">START GAME</button>
+    <p id="overlay-sub"></p>
+    <button id="overlay-btn" onclick="window.game?.start()">START</button>
   </div>
 
   <!-- ── VR button injected by Three.js ── -->

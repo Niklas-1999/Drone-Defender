@@ -1,5 +1,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js';
 
+const SPIN_MAX   = 12.0;  // rad/s max barrel rotation
+const SPIN_ACCEL = 22.0;  // rad/s² when firing
+const SPIN_DECEL =  8.0;  // rad/s² when idle
+
 export class Turret {
   constructor(scene, camera, cameraRig, renderer) {
     this._scene     = scene;
@@ -11,6 +15,7 @@ export class Turret {
     this._flashTimer   = 0;
     this._lastInput    = null;
     this._grabbed      = false;
+    this._spinVel      = 0;   // current barrel spin speed (rad/s)
 
     this._build();
   }
@@ -33,39 +38,28 @@ export class Turret {
     this._body = new THREE.Group();
     this._group.add(this._body);
 
-    const housing = new THREE.Mesh(
-      new THREE.BoxGeometry(0.58, 0.22, 0.52), mat.dark
-    );
-    this._body.add(housing);
+    this._body.add(new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.22, 0.52), mat.dark));
 
-    const ammoBox = new THREE.Mesh(
-      new THREE.BoxGeometry(0.17, 0.26, 0.22), mat.mid
-    );
+    const ammoBox = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.26, 0.22), mat.mid);
     ammoBox.position.set(0.38, -0.02, 0.08);
     this._body.add(ammoBox);
 
-    const belt = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, 0.04, 0.18), mat.light
-    );
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.18), mat.light);
     belt.position.set(0.29, 0.04, 0.08);
     this._body.add(belt);
 
     this._addHandle(this._body, mat, -0.26);
     this._addHandle(this._body, mat,  0.26);
 
-    const post = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.07, 0.09, 0.35, 8), mat.mid
-    );
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.35, 8), mat.mid);
     post.position.set(0, -0.28, 0.05);
     this._body.add(post);
 
-    const strip = new THREE.Mesh(
-      new THREE.BoxGeometry(0.56, 0.015, 0.02), mat.accent
-    );
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.015, 0.02), mat.accent);
     strip.position.set(0, 0.115, -0.26);
     this._body.add(strip);
 
-    // Grab-state indicator ring (glows green when grabbed)
+    // Grab-state indicator ring
     this._grabRing = new THREE.Mesh(
       new THREE.TorusGeometry(0.18, 0.012, 6, 24),
       new THREE.MeshBasicMaterial({ color: 0x004400, transparent: true, opacity: 0.6 })
@@ -74,10 +68,11 @@ export class Turret {
     this._grabRing.position.set(0, 0, 0.05);
     this._body.add(this._grabRing);
 
-    // ── Barrel pivot ────────────────────────────────────────────
+    // ── Barrel pivot (aims) ──────────────────────────────────────
     this._barrelPivot = new THREE.Group();
     this._group.add(this._barrelPivot);
 
+    // Cooling shroud (does NOT spin)
     const shroud = new THREE.Mesh(
       new THREE.CylinderGeometry(0.105, 0.105, 0.72, 10, 1, true), mat.mid
     );
@@ -86,13 +81,23 @@ export class Turret {
     this._barrelPivot.add(shroud);
 
     for (let i = 0; i < 6; i++) {
-      const fin = new THREE.Mesh(
-        new THREE.BoxGeometry(0.24, 0.012, 0.06), mat.light
-      );
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.012, 0.06), mat.light);
       fin.rotation.z = (i / 6) * Math.PI * 2;
       fin.position.z = -0.38 - i * 0.07;
       this._barrelPivot.add(fin);
     }
+
+    // Muzzle flash (does NOT spin)
+    this._muzzleFlash = new THREE.Mesh(
+      new THREE.SphereGeometry(0.10, 6, 4),
+      new THREE.MeshBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0 })
+    );
+    this._muzzleFlash.position.set(0, 0, -1.22);
+    this._barrelPivot.add(this._muzzleFlash);
+
+    // ── Barrel spin group (rotates around Z while firing) ────────
+    this._barrelSpinGroup = new THREE.Group();
+    this._barrelPivot.add(this._barrelSpinGroup);
 
     for (const side of [-1, 1]) {
       const barrel = new THREE.Mesh(
@@ -100,26 +105,17 @@ export class Turret {
       );
       barrel.rotation.x = Math.PI / 2;
       barrel.position.set(side * 0.075, 0, -0.73);
-      this._barrelPivot.add(barrel);
+      this._barrelSpinGroup.add(barrel);
 
       const tip = new THREE.Mesh(
         new THREE.TorusGeometry(0.038, 0.012, 5, 10), mat.light
       );
       tip.rotation.x = Math.PI / 2;
       tip.position.set(side * 0.075, 0, -1.20);
-      this._barrelPivot.add(tip);
+      this._barrelSpinGroup.add(tip);
     }
 
-    const flashMat = new THREE.MeshBasicMaterial({
-      color: 0xffcc44, transparent: true, opacity: 0,
-    });
-    this._muzzleFlash = new THREE.Mesh(
-      new THREE.SphereGeometry(0.10, 6, 4), flashMat
-    );
-    this._muzzleFlash.position.set(0, 0, -1.22);
-    this._barrelPivot.add(this._muzzleFlash);
-
-    // ── VR 3-D crosshair ────────────────────────────────────────
+    // ── VR crosshair ─────────────────────────────────────────────
     this._vrCrosshair = new THREE.Mesh(
       new THREE.RingGeometry(0.016, 0.030, 20),
       new THREE.MeshBasicMaterial({
@@ -147,43 +143,50 @@ export class Turret {
   }
 
   // ── Update ────────────────────────────────────────────────────
-  update(dt, vrMode, input) {
+  // isFiring: whether the player is holding the trigger this frame.
+  update(dt, vrMode, input, isFiring = false) {
     this._lastInput = input;
 
+    // Cooldown timers
     if (this._fireCooldown > 0) this._fireCooldown -= dt;
     if (this._flashTimer   > 0) {
       this._flashTimer -= dt;
       this._muzzleFlash.material.opacity = Math.max(0, this._flashTimer / 0.07);
     }
 
+    // ── Barrel spin ──────────────────────────────────────────────
+    const shouldSpin = isFiring && this._grabbed;
+    if (shouldSpin) {
+      this._spinVel = Math.min(this._spinVel + SPIN_ACCEL * dt, SPIN_MAX);
+    } else {
+      this._spinVel = Math.max(this._spinVel - SPIN_DECEL * dt, 0);
+    }
+    this._barrelSpinGroup.rotation.z -= this._spinVel * dt;
+
+    // ── Aim control ──────────────────────────────────────────────
     if (vrMode) {
-      // VR: only rotate barrel when player is gripping either controller
       this._grabbed = input ? input.isGrabbing() : false;
       if (this._grabbed) {
-        const aimDir = this._getWorldAimDir(vrMode, input);
-        this._aimBarrelAt(aimDir);
+        this._aimBarrelAt(this._getWorldAimDir(vrMode, input));
       }
-      // Visual cue: grab ring colour
       this._grabRing.material.color.setHex(this._grabbed ? 0x00ff44 : 0x004400);
 
-      // Show VR crosshair dot in world
       if (this._grabbed) {
         const groupPos = new THREE.Vector3();
         this._group.getWorldPosition(groupPos);
         const aimDir = this._getWorldAimDir(vrMode, input);
-        const muzzlePos = groupPos.clone().addScaledVector(aimDir, 1.3);
+        const xhPos  = groupPos.clone().addScaledVector(aimDir, 1.3 + 20);
         this._vrCrosshair.visible = true;
-        this._vrCrosshair.position.copy(muzzlePos).addScaledVector(aimDir, 20);
-        this._vrCrosshair.lookAt(muzzlePos);
+        this._vrCrosshair.position.copy(xhPos);
+        this._vrCrosshair.lookAt(groupPos);
       } else {
         this._vrCrosshair.visible = false;
       }
     } else {
-      // Desktop: barrel always follows mouse look
+      // Desktop: always tracks mouse
       this._grabbed = true;
       this._grabRing.material.color.setHex(0x004400);
-      const aimDir = this._getWorldAimDir(false, input);
-      this._aimBarrelAt(aimDir);
+      this._aimBarrelAt(this._getWorldAimDir(false, input));
       this._vrCrosshair.visible = false;
     }
   }
@@ -200,31 +203,29 @@ export class Turret {
   }
 
   // ── Fire ──────────────────────────────────────────────────────
-  // Returns { muzzlePos, aimDir } or null if on cooldown / not grabbed.
   fire(vrMode, audio) {
     if (this._fireCooldown > 0) return null;
     if (vrMode && !this._grabbed) return null;
 
-    this._fireCooldown = 0.11;
+    this._fireCooldown = 0.10; // ~10 rounds/s full-auto
 
     audio.shoot();
     this._muzzleFlash.material.opacity = 1;
-    this._flashTimer = 0.07;
+    this._flashTimer = 0.06;
 
     if (vrMode) {
       const session = this._renderer.xr.getSession();
       session?.inputSources.forEach(src => {
         if (src.handedness === 'right')
-          src.gamepad?.hapticActuators?.[0]?.pulse(0.45, 40);
+          src.gamepad?.hapticActuators?.[0]?.pulse(0.35, 30);
       });
     }
 
-    // Compute muzzle position from group world pos + aim direction
-    // This avoids any world-matrix update timing issues with the marker object.
-    const groupWorldPos = new THREE.Vector3();
-    this._group.getWorldPosition(groupWorldPos);
-    const aimDir = this._getWorldAimDir(vrMode, this._lastInput);
-    const muzzlePos = groupWorldPos.clone().addScaledVector(aimDir, 1.3);
+    // Muzzle world position = gun group centre + 1.3 m along aim direction
+    const groupPos = new THREE.Vector3();
+    this._group.getWorldPosition(groupPos);
+    const aimDir  = this._getWorldAimDir(vrMode, this._lastInput);
+    const muzzlePos = groupPos.clone().addScaledVector(aimDir, 1.3);
 
     return { muzzlePos, aimDir };
   }
@@ -234,21 +235,16 @@ export class Turret {
     if (vrMode && input) {
       const rc = input.getRightController();
       if (rc) {
-        const wq = new THREE.Quaternion();
-        rc.getWorldQuaternion(wq);
-        return new THREE.Vector3(0, 0, -1).applyQuaternion(wq);
+        return new THREE.Vector3(0, 0, -1)
+          .applyQuaternion(rc.getWorldQuaternion(new THREE.Quaternion()));
       }
-      // Fall back to left controller if right not connected
       const lc = input.getLeftController();
       if (lc) {
-        const wq = new THREE.Quaternion();
-        lc.getWorldQuaternion(wq);
-        return new THREE.Vector3(0, 0, -1).applyQuaternion(wq);
+        return new THREE.Vector3(0, 0, -1)
+          .applyQuaternion(lc.getWorldQuaternion(new THREE.Quaternion()));
       }
     }
-    const dir = new THREE.Vector3();
-    this._camera.getWorldDirection(dir);
-    return dir;
+    return this._camera.getWorldDirection(new THREE.Vector3());
   }
 
   _aimBarrelAt(worldAimDir) {

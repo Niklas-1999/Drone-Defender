@@ -9,7 +9,7 @@ import { Turret }            from './turret.js';
 import { InputManager }      from './input.js';
 import { WaveManager }       from './waves.js';
 import { AbilitySystem }     from './abilities.js';
-import { AbilityConsole }   from './abilityConsole.js';
+import { AbilityConsole }    from './abilityConsole.js';
 
 export class Game {
   constructor() {
@@ -31,6 +31,8 @@ export class Game {
     this._initRenderer();
     this._initScene();
     this._initSystems();
+    this._initMusic();
+    this._buildInfoPanel();
 
     this.renderer.setAnimationLoop((t, frame) => this._loop(t, frame));
   }
@@ -73,10 +75,8 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(
       75, window.innerWidth / window.innerHeight, 0.1, 500
     );
-    // Desktop eye height relative to rig. In VR the headset overrides this.
     this.camera.position.set(0, 1.6, 0);
 
-    // Rig at world origin so player stands in the bunker centre.
     this.cameraRig = new THREE.Group();
     this.cameraRig.position.set(0, 0, 0);
     this.cameraRig.add(this.camera);
@@ -100,7 +100,6 @@ export class Game {
       this.renderer, this.cameraRig, this.camera, this.scene
     );
 
-    // WaveManager no longer needs baseCorePos
     this.waves = new WaveManager(this.scene);
 
     this.abilitySystem = new AbilitySystem(
@@ -108,6 +107,113 @@ export class Game {
     );
 
     this.abilityConsole = new AbilityConsole(this.cameraRig);
+  }
+
+  // ── Music ─────────────────────────────────────────────────────
+  _initMusic() {
+    this._tracks = [
+      new Audio('assets/Music/Neon Alley Raid.mp3'),
+      new Audio('assets/Music/Neon Alley Raid 2.mp3'),
+    ];
+    this._currentTrack = 0;
+    this._tracks.forEach((t, i) => {
+      t.volume = 0.55;
+      t.addEventListener('ended', () => {
+        // Switch to the other track
+        this._currentTrack = 1 - i;
+        if (this.state === 'playing') this._tracks[this._currentTrack].play().catch(() => {});
+      });
+    });
+  }
+
+  _startMusic() {
+    this._tracks.forEach(t => { t.pause(); t.currentTime = 0; });
+    this._currentTrack = Math.random() < 0.5 ? 0 : 1;
+    this._tracks[this._currentTrack].play().catch(() => {});
+  }
+
+  _stopMusic() {
+    this._tracks.forEach(t => { t.pause(); t.currentTime = 0; });
+  }
+
+  // ── 3-D info panel (start / game-over) ───────────────────────
+  _buildInfoPanel() {
+    const W = 512, H = 340;
+    this._panelCanvas  = document.createElement('canvas');
+    this._panelCanvas.width  = W;
+    this._panelCanvas.height = H;
+    this._panelCtx = this._panelCanvas.getContext('2d');
+    this._panelTex = new THREE.CanvasTexture(this._panelCanvas);
+
+    this._infoPanel = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.4, 1.6),
+      new THREE.MeshBasicMaterial({
+        map: this._panelTex, transparent: true,
+        side: THREE.DoubleSide, depthTest: false,
+      })
+    );
+    // Fixed world position: eye height, 3 m in front
+    this._infoPanel.position.set(0, 1.55, -3);
+    this.scene.add(this._infoPanel);
+
+    this._drawInfoPanel('menu', 0, 0);
+  }
+
+  _drawInfoPanel(panelState, score, wave) {
+    const ctx = this._panelCtx;
+    const W = 512, H = 340;
+    ctx.clearRect(0, 0, W, H);
+
+    // Rounded panel background
+    ctx.fillStyle = 'rgba(0,8,28,0.92)';
+    ctx.beginPath();
+    ctx.roundRect(6, 6, W - 12, H - 12, 18);
+    ctx.fill();
+    ctx.strokeStyle = '#00aaff';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+
+    if (panelState === 'menu') {
+      ctx.fillStyle = '#00ddff';
+      ctx.font = 'bold 42px monospace';
+      ctx.fillText('VR DRONE DEFENDER', W / 2, 72);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 26px monospace';
+      ctx.fillText('Grab the turret with', W / 2, 148);
+      ctx.fillText('BOTH HANDS to start', W / 2, 186);
+
+      ctx.fillStyle = '#555577';
+      ctx.font = '20px monospace';
+      ctx.fillText('────────────────────────', W / 2, 230);
+
+      ctx.fillStyle = '#aaaacc';
+      ctx.font = '22px monospace';
+      ctx.fillText('Desktop: Press SPACE', W / 2, 268);
+      ctx.fillText('VR: Grip both handles', W / 2, 304);
+    } else if (panelState === 'gameover') {
+      ctx.fillStyle = '#ff4444';
+      ctx.font = 'bold 56px monospace';
+      ctx.fillText('GAME OVER', W / 2, 84);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '32px monospace';
+      ctx.fillText(`Wave  ${wave}`, W / 2, 156);
+      ctx.fillText(`Score ${score}`, W / 2, 200);
+
+      ctx.fillStyle = '#555577';
+      ctx.font = '20px monospace';
+      ctx.fillText('────────────────────────', W / 2, 244);
+
+      ctx.fillStyle = '#aaaacc';
+      ctx.font = '22px monospace';
+      ctx.fillText('Grab with both hands', W / 2, 280);
+      ctx.fillText('Desktop: Press SPACE', W / 2, 314);
+    }
+
+    this._panelTex.needsUpdate = true;
   }
 
   // ── Start / restart ───────────────────────────────────────────
@@ -124,11 +230,13 @@ export class Game {
     this.projectiles.clear();
     this.abilitySystem.resetCooldowns(this.abilities);
 
+    this._infoPanel.visible = false;
     this.ui.hideOverlay();
+    this._startMusic();
     this._startNextWave();
   }
 
-  // ── Abilities (HTML onclick + VR buttons) ─────────────────────
+  // ── Abilities ─────────────────────────────────────────────────
   useAbility(name) {
     if (this.state !== 'playing') return;
     if (this.abilities[name].timer > 0) return;
@@ -137,10 +245,8 @@ export class Game {
     this.audio.abilityActivate();
     this.abilities[name].timer = this.abilities[name].cd;
 
-    // Pass player world position so turret spawns nearby
     const playerPos = new THREE.Vector3();
     this.camera.getWorldPosition(playerPos);
-
     this.abilitySystem.activate(name, this.drones, playerPos);
   }
 
@@ -158,8 +264,9 @@ export class Game {
     this.drones = [];
     this.projectiles.clear();
     if (this.input.mouseLocked) document.exitPointerLock();
-    this.ui.showOverlay('GAME OVER',
-      `Wave ${this.wave}  ·  Score: ${this.score}`, 'PLAY AGAIN');
+    this._stopMusic();
+    this._drawInfoPanel('gameover', this.score, this.wave);
+    this._infoPanel.visible = true;
   }
 
   // ── Main loop ─────────────────────────────────────────────────
@@ -167,70 +274,71 @@ export class Game {
     const dt = Math.min((timestamp - this._lastTime) / 1000, 0.05);
     this._lastTime = timestamp;
 
-    if (this.state === 'playing') this._update(dt, frame);
+    // Input is always polled (needed to detect start in menu/gameover states)
+    this.input.update(dt, frame, this.vrMode);
+
+    if (this.state === 'menu' || this.state === 'gameover') {
+      // VR: grip both handles to start / restart
+      if (this.vrMode && this.input.areBothGripping()) {
+        this.start();
+      }
+    } else if (this.state === 'playing') {
+      this._update(dt, frame);
+    }
 
     this.renderer.render(this.scene, this.camera);
   }
 
+  // ── Game update (playing state) ───────────────────────────────
   _update(dt, frame) {
-    // ── Input ────────────────────────────────────────────────
-    this.input.update(dt, frame, this.vrMode);
-
-    // ── Turret aim ────────────────────────────────────────────
-    this.turret.update(dt, this.vrMode, this.input);
+    // ── Turret aim + barrel spin ──────────────────────────────
+    const isFiring = this.input.isTriggerHeld();
+    this.turret.update(dt, this.vrMode, this.input, isFiring);
     this.ui.setAimOnTarget(this.turret.isAimingAtDrone(this.drones));
 
-    // ── Ability console (VR: hover + trigger to activate) ───────
+    // ── Ability console (VR) ──────────────────────────────────
     let consoleKey = null;
     if (this.vrMode) {
       consoleKey = this.abilityConsole.update(
         this.abilities,
         this.input.getLeftController(),
         this.input.getRightController(),
-        this.input.peekShot(),
+        this.input.consumeTriggerJustPressed(),
       );
-      if (consoleKey) {
-        this.input.consumeShot();   // eat the trigger press
-        this.useAbility(consoleKey);
-      }
+      if (consoleKey) this.useAbility(consoleKey);
     }
 
-    // ── Player shooting ──────────────────────────────────────
-    if (!consoleKey && this.input.consumeShot()) {
+    // ── Full-auto shooting ────────────────────────────────────
+    if (isFiring && !consoleKey) {
       const shot = this.turret.fire(this.vrMode, this.audio);
-      if (shot) {
-        this.projectiles.firePlayer(shot.muzzlePos, shot.aimDir);
-      }
+      if (shot) this.projectiles.firePlayer(shot.muzzlePos, shot.aimDir);
     }
 
-    // ── Ability key press ────────────────────────────────────
+    // ── Ability key (keyboard / left buttons) ─────────────────
     const abilityKey = this.input.consumeAbility();
     if (abilityKey) this.useAbility(abilityKey);
 
-    // ── Cooldowns ────────────────────────────────────────────
+    // ── Cooldowns ─────────────────────────────────────────────
     for (const ab of Object.values(this.abilities)) {
       if (ab.timer > 0) ab.timer = Math.max(0, ab.timer - dt);
     }
 
-    // ── Wave spawning ────────────────────────────────────────
+    // ── Wave spawning ─────────────────────────────────────────
     const newDrones = this.waves.update(dt);
     this.drones.push(...newDrones);
 
-    // ── Player world position (used for drone targeting + hit) ─
+    // ── Player world position ─────────────────────────────────
     const playerPos = new THREE.Vector3();
     this.camera.getWorldPosition(playerPos);
 
-    // ── Drone movement & shooting ────────────────────────────
+    // ── Drone update ──────────────────────────────────────────
     for (let i = this.drones.length - 1; i >= 0; i--) {
       const drone = this.drones[i];
       if (drone.dead) { this.drones.splice(i, 1); continue; }
 
       const { dist, shot } = drone.update(dt, playerPos, this.camera);
-
-      // Drone fires a projectile
       if (shot) this.projectiles.fireEnemy(shot.from, shot.dir);
 
-      // Drone reached the player (melee damage)
       if (dist < 1.2) {
         this.playerHP -= drone.spec.damage;
         this.particles.emit(playerPos.clone(), 'fire', 12, 8);
@@ -238,7 +346,6 @@ export class Game {
         drone.destroy();
         this.drones.splice(i, 1);
         this._shakeCamera();
-
         if (this.playerHP <= 0) {
           this.playerHP = 0;
           this._gameOver();
@@ -247,11 +354,10 @@ export class Game {
       }
     }
 
-    // ── Projectile movement & collision ──────────────────────
+    // ── Projectile update ─────────────────────────────────────
     const { hitDrones, playerDamage } =
       this.projectiles.update(dt, this.drones, playerPos);
 
-    // Handle drones hit by player bullets
     for (const drone of hitDrones) {
       const killed = drone.hit(1);
       this.audio.hit();
@@ -264,7 +370,6 @@ export class Game {
       }
     }
 
-    // Handle player hit by enemy bullets
     if (playerDamage > 0) {
       this.playerHP = Math.max(0, this.playerHP - playerDamage);
       this.audio.baseHit();
@@ -272,15 +377,14 @@ export class Game {
       if (this.playerHP <= 0) { this._gameOver(); return; }
     }
 
-    // ── Ability system (defence turrets, EMP rings) ───────────
+    // ── Abilities ─────────────────────────────────────────────
     this.abilitySystem.update(dt, this.drones);
-    // Collect kill bonus from defence turrets
     this.score += this.abilitySystem.consumeKillBonus();
 
     // ── Particles ─────────────────────────────────────────────
     this.particles.update(dt);
 
-    // ── Check wave complete ───────────────────────────────────
+    // ── Wave complete ─────────────────────────────────────────
     if (this.waves.isComplete() && this.drones.length === 0) {
       this.waves.scheduleNext(() => this._startNextWave(), 4);
     }
@@ -290,7 +394,7 @@ export class Game {
       score:     this.score,
       wave:      this.wave,
       drones:    this.drones.length,
-      baseHP:    this.playerHP,  // ui reuses the same HP bar
+      baseHP:    this.playerHP,
       abilities: this.abilities,
     });
   }
