@@ -14,8 +14,8 @@ class Projectile {
     this.mesh = new THREE.Group();
     this.mesh.position.copy(origin);
 
-    // Glow trail stretched behind the travel direction
-    const trailLen = speed * 0.04;
+    // Glow trail — fixed short length so it doesn't clip through the gun
+    const trailLen = 0.35;
     const trail = new THREE.Mesh(
       new THREE.CylinderGeometry(size * 0.12, size * 0.12, trailLen, 4),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55 })

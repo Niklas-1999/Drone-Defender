@@ -54,6 +54,14 @@ export class SceneBuilder {
     this._transitioning = true;
   }
 
+  // Instantly snap to daytime (called on game restart).
+  resetToDay() {
+    this._transitioning = false;
+    this._isNight       = false;
+    this.currentBlend   = 0;
+    this._applyBlend(0);
+  }
+
   // Call every frame from game.js while transitioning
   update(dt) {
     if (!this._transitioning) return;

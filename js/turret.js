@@ -254,10 +254,9 @@ export class Turret {
       });
     }
 
-    const groupPos = new THREE.Vector3();
-    this._group.getWorldPosition(groupPos);
-    const aimDir   = this._getWorldAimDir(vrMode, this._lastInput);
-    const muzzlePos = groupPos.clone().addScaledVector(aimDir, 1.3);
+    const muzzlePos = new THREE.Vector3();
+    this._muzzleFlash.getWorldPosition(muzzlePos);
+    const aimDir = this._getWorldAimDir(vrMode, this._lastInput);
 
     return { muzzlePos, aimDir };
   }

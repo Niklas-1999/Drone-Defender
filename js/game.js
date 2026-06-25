@@ -253,7 +253,7 @@ export class Game {
     this._isNight = false;
     this._skyTransitioning = false;
     this._turretLight.intensity = 0;
-    this.sceneBuilder.startTransition(false, 0.01, () => {}); // snap to day
+    this.sceneBuilder.resetToDay();
 
     this._startMusic();
     this._startNextWave();
