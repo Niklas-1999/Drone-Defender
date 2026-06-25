@@ -16,6 +16,7 @@ export class AudioSystem {
 
     try {
       const resp = await fetch('assets/Soundeffects/machine-gun.mp3');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const ab   = await resp.arrayBuffer();
       this._gunBuffer = await this.ctx.decodeAudioData(ab);
     } catch (e) {

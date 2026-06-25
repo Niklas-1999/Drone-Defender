@@ -15,6 +15,7 @@ export class InputManager {
     this._mouseHeld          = false;
     this._spaceHeld          = false;
     this._triggerHeld        = false;
+    this._triggerHeldLeft    = false;
     this._triggerJustPressed = false;   // VR rising-edge (consumed once)
 
     // VR grip state
@@ -153,9 +154,9 @@ export class InputManager {
       }
 
       if (hand === 'left') {
-        // Left trigger also counts as "just pressed" for UI panel interaction
         const ltrig = (gp.buttons[0]?.value ?? 0) > 0.5;
         if (ltrig && !this._triggerWas.left) this._triggerJustPressed = true;
+        this._triggerHeldLeft = ltrig;
         this._triggerWas.left = ltrig;
 
         if (gp.buttons[1]?.pressed) this._gripLeft = true;
@@ -166,7 +167,7 @@ export class InputManager {
   // ── Fire state accessors ──────────────────────────────────────
   // Full-auto: true while trigger / mouse / space is held.
   isTriggerHeld() {
-    return this._mouseHeld || this._spaceHeld || this._triggerHeld;
+    return this._mouseHeld || this._spaceHeld || this._triggerHeld || this._triggerHeldLeft;
   }
 
   // Rising-edge of VR right trigger (for console button presses).
