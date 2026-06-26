@@ -1,5 +1,20 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js';
 
+// Minimum distance from point p to segment [a, b]
+function segPointDist(ax, ay, az, bx, by, bz, px, py, pz) {
+  const abx = bx - ax, aby = by - ay, abz = bz - az;
+  const len2 = abx * abx + aby * aby + abz * abz;
+  if (len2 === 0) {
+    const dx = px - ax, dy = py - ay, dz = pz - az;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+  const t = Math.max(0, Math.min(1,
+    ((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / len2));
+  const cx = ax + t * abx, cy = ay + t * aby, cz = az + t * abz;
+  const dx = px - cx, dy = py - cy, dz = pz - cz;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
 // ── Single projectile ──────────────────────────────────────────
 class Projectile {
   constructor(scene, origin, direction, speed, color, size, maxRange) {
@@ -9,6 +24,7 @@ class Projectile {
     this._maxRange = maxRange;
     this._traveled = 0;
     this.alive    = true;
+    this._prevPos = origin.clone();
 
     // Root group (no sphere — trail only)
     this.mesh = new THREE.Group();
@@ -45,6 +61,7 @@ class Projectile {
   }
 
   update(dt) {
+    this._prevPos.copy(this.mesh.position);
     const step = this._speed * dt;
     this.mesh.position.addScaledVector(this._dir, step);
     this._traveled += step;
@@ -105,7 +122,13 @@ export class ProjectileManager {
       let hit = false;
       for (const d of drones) {
         if (d.dead) continue;
-        if (b.mesh.position.distanceTo(d.group.position) < d.spec.size * 1.3) {
+        const dp = d.group.position;
+        const dist = segPointDist(
+          b._prevPos.x, b._prevPos.y, b._prevPos.z,
+          b.mesh.position.x, b.mesh.position.y, b.mesh.position.z,
+          dp.x, dp.y, dp.z
+        );
+        if (dist < d.spec.size * 1.2) {
           hitDrones.add(d);
           hit = true;
           break;

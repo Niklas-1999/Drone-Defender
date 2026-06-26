@@ -8,18 +8,59 @@ const DAY_BG_COL    = new THREE.Color(0x90caf9);
 const NIGHT_AMB_COL = new THREE.Color(0x1a083a);
 const NIGHT_FOG_COL = new THREE.Color(0x080018);
 const NIGHT_BG_COL  = new THREE.Color(0x0a001e);
+// Evening (sunset) colour constants
+const EVE_AMB_COL   = new THREE.Color(0x6b2a10);
+const EVE_FOG_COL   = new THREE.Color(0x5a1a08);
+const EVE_BG_COL    = new THREE.Color(0x3a0e06);
+
+// ── Rain system ───────────────────────────────────────────────────
+class RainSystem {
+  constructor(scene) {
+    const N   = 2000;
+    const pos = new Float32Array(N * 6); // 2 verts × 3 floats per segment
+    for (let i = 0; i < N; i++) {
+      const x = (Math.random() - 0.5) * 100;
+      const z = (Math.random() - 0.5) * 100;
+      const y = Math.random() * 38 - 3;
+      pos[i*6]   = x;  pos[i*6+1] = y;       pos[i*6+2] = z;
+      pos[i*6+3] = x;  pos[i*6+4] = y - 0.4; pos[i*6+5] = z;
+    }
+    const geo = new THREE.BufferGeometry();
+    this._attr = new THREE.BufferAttribute(pos, 3);
+    geo.setAttribute('position', this._attr);
+    this._N    = N;
+    this._mesh = new THREE.LineSegments(geo,
+      new THREE.LineBasicMaterial({ color: 0x99bbcc, transparent: true, opacity: 0.28 }));
+    this._mesh.visible = false;
+    scene.add(this._mesh);
+  }
+
+  setVisible(v) { this._mesh.visible = v; }
+
+  update(dt) {
+    if (!this._mesh.visible) return;
+    const a   = this._attr.array;
+    const spd = 15 * dt;
+    for (let i = 0; i < this._N; i++) {
+      a[i*6+1] -= spd;
+      a[i*6+4] -= spd;
+      if (a[i*6+4] < -5) { a[i*6+1] += 40; a[i*6+4] += 40; }
+    }
+    this._attr.needsUpdate = true;
+  }
+}
 
 export class SceneBuilder {
   constructor(scene) {
     this._scene = scene;
 
-    // Transition state (0 = full day, 1 = full night)
+    // Transition state — currentBlend: 0=day, 1=evening, 2=night
     this.currentBlend    = 0;
-    this._isNight        = false;
+    this._blendFrom      = 0;
+    this._blendTo        = 0;
     this._transitioning  = false;
     this._transitionT    = 0;
     this._transitionDur  = 4;
-    this._toNight        = false;
     this._onTransDone    = null;
 
     // Light refs — populated in _buildLighting()
@@ -30,9 +71,11 @@ export class SceneBuilder {
     this._streetGlow = null;
 
     // Sky refs
-    this._daySky  = null;
+    this._daySky   = null;
+    this._eveSky   = null;
     this._nightSky = null;
     this._stars    = null;
+    this._rain     = null;
   }
 
   build() {
@@ -42,12 +85,15 @@ export class SceneBuilder {
     this._addNearBuildings();
     this._addSkyscrapers();
     this._addCityFloor();
+    this._rain = new RainSystem(this._scene);
     this._applyBlend(0); // start as full daytime
   }
 
   // ── Transition API ────────────────────────────────────────────
-  startTransition(isNight, duration, callback) {
-    this._toNight       = isNight;
+  startTransition(targetPeriod, duration, callback) {
+    const TARGET = { day: 0, evening: 1, night: 2 };
+    this._blendFrom     = this.currentBlend;
+    this._blendTo       = TARGET[targetPeriod] ?? 0;
     this._transitionDur = duration;
     this._transitionT   = 0;
     this._onTransDone   = callback;
@@ -57,30 +103,32 @@ export class SceneBuilder {
   // Instantly snap to daytime (called on game restart).
   resetToDay() {
     this._transitioning = false;
-    this._isNight       = false;
     this.currentBlend   = 0;
+    this._blendFrom     = 0;
+    this._blendTo       = 0;
     this._applyBlend(0);
+    if (this._rain) this._rain.setVisible(false);
   }
 
-  // Call every frame from game.js while transitioning
+  setRainVisible(v) { if (this._rain) this._rain.setVisible(v); }
+
+  // Call every frame from game.js while transitioning or rain is active
   update(dt) {
+    if (this._rain) this._rain.update(dt);
     if (!this._transitioning) return;
     this._transitionT += dt;
     const raw   = Math.min(this._transitionT / this._transitionDur, 1);
     const eased = raw < 0.5 ? 2 * raw * raw : -1 + (4 - 2 * raw) * raw;
-    this.currentBlend = this._toNight ? eased : 1 - eased;
+    this.currentBlend = this._blendFrom + (this._blendTo - this._blendFrom) * eased;
     this._applyBlend(this.currentBlend);
 
     if (raw >= 1) {
-      this._isNight       = this._toNight;
       this._transitioning = false;
       const cb = this._onTransDone;
       this._onTransDone = null;
       cb?.();
     }
   }
-
-  get isNight() { return this._isNight; }
 
   // ── Sky ───────────────────────────────────────────────────────
   _buildSky() {
@@ -100,6 +148,26 @@ export class SceneBuilder {
       })
     );
     this._scene.add(this._daySky);
+
+    // Evening dome (sunset, sits between day and night domes)
+    this._eveSky = new THREE.Mesh(
+      new THREE.SphereGeometry(378, 32, 16),
+      new THREE.MeshBasicMaterial({
+        map: this._makeSkyTex([
+          [0.00, '#0c0220'],
+          [0.22, '#28085a'],
+          [0.42, '#5a1535'],
+          [0.62, '#962e10'],
+          [0.78, '#c04818'],
+          [0.90, '#cc5820'],
+          [1.00, '#7a2808'],
+        ]),
+        side: THREE.BackSide,
+        transparent: true,
+        opacity: 0,
+      })
+    );
+    this._scene.add(this._eveSky);
 
     // Night dome (opacity-animated over the day dome)
     this._nightSky = new THREE.Mesh(
@@ -190,19 +258,35 @@ export class SceneBuilder {
     this._scene.add(this._streetGlow);
   }
 
-  // Interpolate every animated value between day and night
+  // t: 0=full day, 1=full evening, 2=full night
   _applyBlend(t) {
-    this._nightSky.material.opacity  = t;
-    this._stars.material.opacity     = t;
-    this._scene.background.copy(DAY_BG_COL.clone().lerp(NIGHT_BG_COL, t));
-    this._scene.fog.color.copy(DAY_FOG_COL.clone().lerp(NIGHT_FOG_COL, t));
-    this._scene.fog.density  = 0.006 + 0.001 * t;
-    this._ambient.color.copy(DAY_AMB_COL.clone().lerp(NIGHT_AMB_COL, t));
-    this._ambient.intensity  = 1.4 - 0.5 * t;
-    this._sun.intensity      = 3.0 * (1 - t);
-    this._moon.intensity     = 0.35 * t;
-    for (const l of this._neonLights) l.intensity = l.userData.ni * t;
-    this._streetGlow.intensity = 6 * t;
+    const eveFrac = Math.min(t, 1);
+    const ngtFrac = Math.max(0, t - 1);
+    const segFrac = t < 1 ? t : t - 1; // 0-1 within the current segment
+
+    this._eveSky.material.opacity    = eveFrac;
+    this._nightSky.material.opacity  = ngtFrac;
+    this._stars.material.opacity     = ngtFrac;
+
+    const fromBG = t < 1 ? DAY_BG_COL  : EVE_BG_COL;
+    const toBG   = t < 1 ? EVE_BG_COL  : NIGHT_BG_COL;
+    this._scene.background.copy(fromBG.clone().lerp(toBG, segFrac));
+
+    const fromFog = t < 1 ? DAY_FOG_COL : EVE_FOG_COL;
+    const toFog   = t < 1 ? EVE_FOG_COL : NIGHT_FOG_COL;
+    this._scene.fog.color.copy(fromFog.clone().lerp(toFog, segFrac));
+    this._scene.fog.density = 0.006 + 0.002 * (t / 2);
+
+    const fromAmb = t < 1 ? DAY_AMB_COL : EVE_AMB_COL;
+    const toAmb   = t < 1 ? EVE_AMB_COL : NIGHT_AMB_COL;
+    this._ambient.color.copy(fromAmb.clone().lerp(toAmb, segFrac));
+    this._ambient.intensity = t < 1 ? 1.4 - 0.25 * segFrac : 1.15 - 0.25 * segFrac;
+
+    // Sun: full at day, golden-dim at evening, off at night
+    this._sun.intensity      = t < 1 ? 3.0 - 2.5 * segFrac : 0.5 * (1 - segFrac);
+    this._moon.intensity     = ngtFrac * 0.35;
+    for (const l of this._neonLights) l.intensity = l.userData.ni * ngtFrac;
+    this._streetGlow.intensity = 6 * ngtFrac;
   }
 
   // ── Player rooftop ────────────────────────────────────────────

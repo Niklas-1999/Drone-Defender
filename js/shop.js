@@ -85,10 +85,11 @@ export class ShopSystem {
 
   // ── Public API ──────────────────────────────────────────────────────────
 
-  open(waveNumber, money, upgradeLevels) {
-    this.levels = { ...upgradeLevels };
-    this._panel.visible = true;
-    this._wave   = waveNumber;
+  open(waveLabel, money, upgradeLevels, noDamageBonus = 0) {
+    this.levels          = { ...upgradeLevels };
+    this._panel.visible  = true;
+    this._waveLabel      = waveLabel;   // string or number
+    this._noDamageBonus  = noDamageBonus;
     this.draw(money);
     this._trigWas = false;
   }
@@ -169,12 +170,20 @@ export class ShopSystem {
     ctx.font = 'bold 28px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`◈ WAVE ${this._wave} COMPLETE — SHOP ◈`, CW / 2, 32);
+    ctx.fillText(`◈ ${this._waveLabel} COMPLETE — SHOP ◈`, CW / 2, 32);
+
+    // No-damage bonus notification
+    const hasBonus = this._noDamageBonus > 0;
+    if (hasBonus) {
+      ctx.fillStyle = '#00ff88';
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText(`✓ No damage!  +$${this._noDamageBonus} bonus`, CW / 2, 54);
+    }
 
     // Money
     ctx.fillStyle = '#ffd700';
     ctx.font = 'bold 20px monospace';
-    ctx.fillText(`💰  $${money}`, CW / 2, 62);
+    ctx.fillText(`💰  $${money}`, CW / 2, hasBonus ? 72 : 62);
 
     // Column dividers
     ctx.strokeStyle = 'rgba(0,150,255,0.2)';

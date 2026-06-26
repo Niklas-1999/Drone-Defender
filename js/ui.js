@@ -431,8 +431,8 @@ export class UIManager {
     if (!this._vrMode) this._crosshair.className = on ? 'on-target' : '';
   }
 
-  announceWave(n) {
-    this._elAnnounce.textContent   = `WAVE  ${n}`;
+  announceWave(label) {
+    this._elAnnounce.textContent   = typeof label === 'number' ? `WAVE  ${label}` : label;
     this._elAnnounce.style.opacity = '1';
     clearTimeout(this._announceTimeout);
     this._announceTimeout = setTimeout(() => {

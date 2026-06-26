@@ -66,9 +66,9 @@ export class InputManager {
     document.addEventListener('keydown', e => {
       const state = window.game?.state;
 
-      // Start / restart from menu or gameover
+      // Start / restart from menu, gameover, or win
       if ((e.key === ' ' || e.code === 'Space') &&
-          (state === 'menu' || state === 'gameover')) {
+          (state === 'menu' || state === 'gameover' || state === 'win')) {
         e.preventDefault();
         if (!this.mouseLocked) document.body.requestPointerLock();
         window.game?.start();

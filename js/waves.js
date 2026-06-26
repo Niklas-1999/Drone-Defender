@@ -3,6 +3,10 @@ import { Drone } from './drone.js';
 // Drones spawn in a forward arc (±65° from player's -Z look direction).
 const HALF_ARC = 52 * (Math.PI / 180); // 20 % narrower than original 65°
 
+function buildBossWaveConfig() {
+  return [{ type: 'scout', delay: 0 }]; // placeholder: 1 scout
+}
+
 function buildWaveConfig(waveNumber) {
   const w = waveNumber;
   const config = [];
@@ -32,6 +36,15 @@ export class WaveManager {
 
   startWave(waveNumber) {
     this._config     = buildWaveConfig(waveNumber);
+    this._spawnIndex = 0;
+    this._waveTimer  = 0;
+    this._complete   = false;
+    this._nextTimer  = 0;
+    this._nextCb     = null;
+  }
+
+  startBossWave() {
+    this._config     = buildBossWaveConfig();
     this._spawnIndex = 0;
     this._waveTimer  = 0;
     this._complete   = false;

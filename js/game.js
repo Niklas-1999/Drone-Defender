@@ -15,6 +15,13 @@ import { ShopSystem }        from './shop.js';
 // Money awarded per drone kill by type
 const KILL_MONEY = { scout: 10, warrior: 20, titan: 30 };
 
+// Wave structure: 18 total, boss waves at 6, 12, 18
+const MAX_WAVE  = 18;
+const BOSS_WAVES = new Set([6, 12, 18]);
+
+// Period boundaries: 1-6 day, 7-12 evening, 13-18 night
+const MUSIC_VOL = 0.55;
+
 export class Game {
   constructor() {
     this.state    = 'menu';
@@ -25,16 +32,26 @@ export class Game {
     this.drones   = [];
     this.vrMode   = false;
 
-    this._lastTime       = 0;
-    this._isNight        = false;
+    this._lastTime         = 0;
+    this._currentPeriod    = 'day';   // 'day' | 'evening' | 'night'
     this._skyTransitioning = false;
-    this._emptyGunPlayed = false;
+    this._emptyGunPlayed   = false;
+    this._hpAtWaveStart    = 100;
+    this._fireworkTimer    = 0;
 
     // Upgrade levels (keyed by upgrade id) — persisted through waves, reset on new game
     this._upgradeLevels = {};
 
     // Auto turrets — null until purchased
     this._autoTurrets = { left: null, right: null };
+
+    // Music — three period groups, each with two tracks
+    this._musicGroups   = null;
+    this._musicPeriod   = 'day';
+    this._musicIdx      = 0;
+    this._musicFadeOut  = null; // { track, elapsed, dur }
+    this._musicFadeIn   = null; // { track, elapsed, dur }
+    this._pendingPeriod = null; // period waiting for fade-out to finish
 
     this._initRenderer();
     this._initScene();
@@ -120,31 +137,102 @@ export class Game {
 
   // ── Music ─────────────────────────────────────────────────────
   _initMusic() {
-    this._tracks = [
-      new Audio('assets/Music/Neon Alley Raid.mp3'),
-      new Audio('assets/Music/Neon Alley Raid 2.mp3'),
-    ];
-    this._currentTrack = 0;
-    this._tracks.forEach((t, i) => {
-      t.volume = 0.55;
-      t.addEventListener('ended', () => {
-        this._currentTrack = 1 - i;
-        if (this.state === 'playing') this._tracks[this._currentTrack].play().catch(() => {});
+    const make = (f1, f2) => {
+      const t1 = new Audio(`assets/Music/${f1}`);
+      const t2 = new Audio(`assets/Music/${f2}`);
+      t1.volume = t2.volume = 0;
+      return [t1, t2];
+    };
+
+    this._musicGroups = {
+      day:     make('Neon Alley Raid.mp3',       'Neon Alley Raid 2.mp3'),
+      evening: make('Neon Rift Battle.mp3',    'Neon Rift Battle 2.mp3'),
+      night:   make('Neon Skyline Clash.mp3', 'Neon Skyline Clash 2.mp3'),
+    };
+
+    // When a track ends, automatically cycle to the other in the same period
+    for (const [period, [t0, t1]] of Object.entries(this._musicGroups)) {
+      t0.addEventListener('ended', () => {
+        if (this._musicPeriod !== period || this._musicFadeOut) return;
+        this._musicIdx = 1;
+        t1.currentTime = 0; t1.volume = MUSIC_VOL;
+        t1.play().catch(() => {});
       });
-    });
+      t1.addEventListener('ended', () => {
+        if (this._musicPeriod !== period || this._musicFadeOut) return;
+        this._musicIdx = 0;
+        t0.currentTime = 0; t0.volume = MUSIC_VOL;
+        t0.play().catch(() => {});
+      });
+    }
   }
 
   _startMusic() {
-    this._tracks.forEach(t => { t.pause(); t.currentTime = 0; });
-    this._currentTrack = Math.random() < 0.5 ? 0 : 1;
-    this._tracks[this._currentTrack].play().catch(() => {});
+    this._stopAllMusic();
+    this._musicPeriod = this._currentPeriod;
+    this._musicIdx    = Math.random() < 0.5 ? 0 : 1;
+    const track = this._musicGroups[this._musicPeriod][this._musicIdx];
+    track.currentTime = 0;
+    track.volume      = MUSIC_VOL;
+    track.play().catch(() => {});
   }
 
-  _stopMusic() {
-    this._tracks.forEach(t => { t.pause(); t.currentTime = 0; });
+  _stopAllMusic() {
+    for (const [t0, t1] of Object.values(this._musicGroups)) {
+      t0.pause(); t0.currentTime = 0; t0.volume = 0;
+      t1.pause(); t1.currentTime = 0; t1.volume = 0;
+    }
+    this._musicFadeOut  = null;
+    this._musicFadeIn   = null;
+    this._pendingPeriod = null;
   }
 
-  // ── 3-D info panel (start / game-over) ───────────────────────
+  _stopMusic() { this._stopAllMusic(); }
+
+  _switchMusicPeriod(newPeriod) {
+    if (newPeriod === this._musicPeriod) return;
+
+    const playing = this._musicGroups[this._musicPeriod][this._musicIdx];
+    if (!playing.paused && playing.volume > 0) {
+      this._musicFadeOut = { track: playing, elapsed: 0, dur: 2.0 };
+    }
+    // Redirect ended-event routing immediately
+    this._musicPeriod   = newPeriod;
+    this._pendingPeriod = newPeriod;
+  }
+
+  _updateMusic(dt) {
+    if (this._musicFadeOut) {
+      this._musicFadeOut.elapsed += dt;
+      const t = Math.min(this._musicFadeOut.elapsed / this._musicFadeOut.dur, 1);
+      this._musicFadeOut.track.volume = MUSIC_VOL * (1 - t);
+      if (t >= 1) {
+        this._musicFadeOut.track.pause();
+        this._musicFadeOut = null;
+        if (this._pendingPeriod) {
+          this._musicIdx = Math.random() < 0.5 ? 0 : 1;
+          const newTrack = this._musicGroups[this._pendingPeriod][this._musicIdx];
+          newTrack.currentTime = 0;
+          newTrack.volume = 0;
+          newTrack.play().catch(() => {});
+          this._musicFadeIn   = { track: newTrack, elapsed: 0, dur: 2.0 };
+          this._pendingPeriod = null;
+        }
+      }
+    }
+
+    if (this._musicFadeIn) {
+      this._musicFadeIn.elapsed += dt;
+      const t = Math.min(this._musicFadeIn.elapsed / this._musicFadeIn.dur, 1);
+      this._musicFadeIn.track.volume = MUSIC_VOL * t;
+      if (t >= 1) {
+        this._musicFadeIn.track.volume = MUSIC_VOL;
+        this._musicFadeIn = null;
+      }
+    }
+  }
+
+  // ── 3-D info panel (start / game-over / win) ──────────────────
   _buildInfoPanel() {
     const W = 512, H = 340;
     this._panelCanvas        = document.createElement('canvas');
@@ -163,7 +251,6 @@ export class Game {
     this._infoPanel.position.set(0, 1.55, -3);
     this.scene.add(this._infoPanel);
 
-    // VR hover state for the action button
     this._panelBtnHovered = false;
     this._panelBtnUV      = null;
 
@@ -204,8 +291,6 @@ export class Game {
         hov ? '#88ffee' : '#00ffee',
         hov ? '#004a50' : '#002a30');
 
-      // UV zone of this button (for VR hover detection)
-      // Button canvas rect: x 156-356, y 194-246 in 512×340 canvas
       this._panelBtnUV = { x0: 0.305, x1: 0.695, y0: 0.276, y1: 0.429 };
 
       ctx.fillStyle = '#666688';
@@ -231,7 +316,33 @@ export class Game {
         hov ? '#ffee88' : '#ffcc44',
         hov ? '#4a3800' : '#2a1a00');
 
-      // UV zone: x 136-376, y 246-298 in 512×340
+      this._panelBtnUV = { x0: 0.266, x1: 0.734, y0: 0.124, y1: 0.276 };
+
+      ctx.fillStyle = '#666688';
+      ctx.font = '18px monospace';
+      ctx.fillText('Desktop: Press SPACE', W / 2, 324);
+
+    } else if (panelState === 'win') {
+      ctx.fillStyle = '#00ff88';
+      ctx.font = 'bold 50px monospace';
+      ctx.fillText('YOU WIN!', W / 2, 70);
+
+      ctx.fillStyle = '#aaffcc';
+      ctx.font = '20px monospace';
+      ctx.fillText('All 18 waves cleared!', W / 2, 108);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '30px monospace';
+      ctx.fillText(`Score  ${score}`, W / 2, 156);
+
+      ctx.fillStyle = '#555577';
+      ctx.font = '20px monospace';
+      ctx.fillText('────────────────────────', W / 2, 192);
+
+      this._drawPanelBtn(ctx, W / 2, 258, 240, 52, '↺  PLAY AGAIN',
+        hov ? '#aaffcc' : '#00ff88',
+        hov ? '#004a20' : '#003018');
+
       this._panelBtnUV = { x0: 0.266, x1: 0.734, y0: 0.124, y1: 0.276 };
 
       ctx.fillStyle = '#666688';
@@ -257,6 +368,29 @@ export class Game {
     ctx.textBaseline = 'middle';
     ctx.fillText(label, cx, cy);
     ctx.textBaseline = 'alphabetic';
+  }
+
+  // ── Wave helpers ──────────────────────────────────────────────
+  _isBossWave(w)  { return BOSS_WAVES.has(w); }
+
+  _getPeriod(w) {
+    if (w <= 6)  return 'day';
+    if (w <= 12) return 'evening';
+    return 'night';
+  }
+
+  // Human-readable wave label for the HUD / announcer
+  _waveLabel(w) {
+    if (this._isBossWave(w)) return 'BOSS WAVE';
+    const bossCount = [6, 12, 18].filter(b => b < w).length;
+    return `WAVE  ${w - bossCount}`;
+  }
+
+  // Number (or 'BOSS') shown in the wave HUD counter
+  _waveDisplay(w) {
+    if (this._isBossWave(w)) return 'BOSS';
+    const bossCount = [6, 12, 18].filter(b => b < w).length;
+    return w - bossCount;
   }
 
   // ── Start / restart ───────────────────────────────────────────
@@ -297,12 +431,12 @@ export class Game {
     this.turret.reload();
     this._emptyGunPlayed = false;
 
-    this._infoPanel.visible  = false;
-    this._panelBtnHovered    = false;
+    this._infoPanel.visible = false;
+    this._panelBtnHovered   = false;
     this.shop.close();
     this.ui.hideOverlay();
 
-    this._isNight = false;
+    this._currentPeriod    = 'day';
     this._skyTransitioning = false;
     this._turretLight.intensity = 0;
     this.sceneBuilder.resetToDay();
@@ -312,14 +446,12 @@ export class Game {
   }
 
   // ── Upgrade system ────────────────────────────────────────────
-
   buyAutoTurret(side) {
     if (this._autoTurrets[side]) return;
     this._autoTurrets[side] = new AutoTurret(this.scene, this.cameraRig, side);
   }
 
   upgradeAutoTurretRate(level) {
-    // Base 3s cooldown, each level multiplies by 1/1.5
     const cd = 3.0 * Math.pow(1 / 1.5, level);
     for (const side of ['left', 'right']) {
       if (this._autoTurrets[side]) this._autoTurrets[side].setFireCooldown(cd);
@@ -336,7 +468,6 @@ export class Game {
     const cost = upg.cost(lvlNow);
     if (this.money < cost) return;
 
-    // Check requirements
     if (upg.requires?.some(r => !(this._upgradeLevels[r] ?? 0))) return;
 
     this.money -= cost;
@@ -348,25 +479,36 @@ export class Game {
 
   // ── Shop flow ─────────────────────────────────────────────────
   _openShop() {
+    // No-damage bonus: $50 for wave 1, +$10 per subsequent wave
+    let bonus = 0;
+    if (this.playerHP >= this._hpAtWaveStart) {
+      bonus = 50 + (this.wave - 1) * 10;
+      this.money += bonus;
+    }
+
     this.state = 'shop';
-    this.shop.open(this.wave, this.money, this._upgradeLevels);
+    this.shop.open(this._waveDisplay(this.wave), this.money, this._upgradeLevels, bonus);
   }
 
   // ── Wave management ───────────────────────────────────────────
-  _isNightWave(w) { return Math.floor((w - 1) / 5) % 2 === 1; }
-
   _startNextWave() {
     this.wave++;
-    const wantNight  = this._isNightWave(this.wave);
-    const needsSwitch = wantNight !== this._isNight;
 
-    if (needsSwitch) {
+    // After all 18 waves completed → win
+    if (this.wave > MAX_WAVE) { this._win(); return; }
+
+    const newPeriod  = this._getPeriod(this.wave);
+    const needSwitch = newPeriod !== this._currentPeriod;
+
+    if (needSwitch) {
       this._skyTransitioning = true;
-      this.sceneBuilder.startTransition(wantNight, 4.0, () => {
-        this._isNight = wantNight;
+      this._switchMusicPeriod(newPeriod);
+      this.sceneBuilder.startTransition(newPeriod, 4.0, () => {
+        this._currentPeriod = newPeriod;
         this._skyTransitioning = false;
-        for (const d of this.drones) d.setNightMode(this._isNight);
-        this._turretLight.intensity = this._isNight ? 3 : 0;
+        for (const d of this.drones) d.setNightMode(this._currentPeriod === 'night');
+        this._turretLight.intensity = this._currentPeriod === 'night' ? 3 : 0;
+        if (this._currentPeriod === 'night') this.sceneBuilder.setRainVisible(true);
         this._launchWave();
       });
     } else {
@@ -376,9 +518,49 @@ export class Game {
 
   _launchWave() {
     this.state = 'playing';
-    this.waves.startWave(this.wave);
-    this.ui.announceWave(this.wave);
+    this._hpAtWaveStart = this.playerHP;
+
+    if (this._isBossWave(this.wave)) {
+      this.waves.startBossWave();
+    } else {
+      this.waves.startWave(this.wave);
+    }
+
+    this.ui.announceWave(this._waveLabel(this.wave));
     this.audio.waveStart();
+  }
+
+  // ── Win ───────────────────────────────────────────────────────
+  _win() {
+    this.state = 'win';
+    for (const d of this.drones) d.destroy();
+    this.drones = [];
+    this.projectiles.clear();
+    if (this.input.mouseLocked) document.exitPointerLock();
+    this._stopMusic();
+    this._fireworkTimer = 0;
+    this._drawInfoPanel('win', this.score, this.wave);
+    this._infoPanel.visible = true;
+  }
+
+  _updateWin(dt) {
+    // Periodic firework bursts
+    this._fireworkTimer -= dt;
+    if (this._fireworkTimer <= 0) {
+      this._fireworkTimer = 0.3 + Math.random() * 0.7;
+      const pos = new THREE.Vector3(
+        (Math.random() - 0.5) * 22,
+        2 + Math.random() * 10,
+        -4 - Math.random() * 16
+      );
+      this.particles.emit(pos, 'spark', 28, 16);
+      this.particles.emit(pos, 'fire',  10,  9);
+    }
+    this.particles.update(dt);
+
+    if (this.vrMode && this.input.consumeTriggerJustPressed()) {
+      if (this._panelRayHit()) this.start();
+    }
   }
 
   // ── Panel ray-cast + hover ────────────────────────────────────
@@ -423,7 +605,7 @@ export class Game {
     this.projectiles.clear();
     if (this.input.mouseLocked) document.exitPointerLock();
     this._stopMusic();
-    this._drawInfoPanel('gameover', this.score, this.wave);
+    this._drawInfoPanel('gameover', this.score, this._waveDisplay(this.wave));
     this._infoPanel.visible = true;
   }
 
@@ -436,24 +618,38 @@ export class Game {
 
     if (this.state === 'menu' || this.state === 'gameover') {
       if (this.vrMode) {
-        // Button hover feedback
         const h = this._getPanelBtnHover();
         if (h !== this._panelBtnHovered) {
           this._panelBtnHovered = h;
-          this._drawInfoPanel(this.state === 'menu' ? 'menu' : 'gameover', this.score, this.wave);
+          this._drawInfoPanel(
+            this.state === 'menu' ? 'menu' : 'gameover',
+            this.score, this._waveDisplay(this.wave)
+          );
         }
         if (this.input.consumeTriggerJustPressed()) {
           if (this._panelRayHit()) this.start();
         }
       }
 
+    } else if (this.state === 'win') {
+      if (this.vrMode) {
+        const h = this._getPanelBtnHover();
+        if (h !== this._panelBtnHovered) {
+          this._panelBtnHovered = h;
+          this._drawInfoPanel('win', this.score, this._waveDisplay(this.wave));
+        }
+      }
+      this._updateWin(dt);
+
     } else if (this.state === 'shop') {
+      this._updateMusic(dt);
       this._updateShop(dt);
 
     } else if (this.state === 'playing') {
+      this._updateMusic(dt);
+      this.sceneBuilder.update(dt); // always update (rain + sky transition)
       if (this._skyTransitioning) {
-        this.sceneBuilder.update(dt);
-        this._turretLight.intensity = this.sceneBuilder.currentBlend * 3;
+        this._turretLight.intensity = Math.max(0, this.sceneBuilder.currentBlend - 1) * 3;
       } else {
         this._update(dt, frame);
       }
@@ -464,10 +660,8 @@ export class Game {
 
   // ── Shop update ───────────────────────────────────────────────
   _updateShop(dt) {
-    // VR interaction — returns button id or null
     const vrAction = this.shop.update(dt, this.input, this.vrMode, this.money);
 
-    // Keyboard interaction
     const key = this.input.consumeShopKey();
     let action = vrAction;
 
@@ -486,7 +680,6 @@ export class Game {
       this._applyUpgrade(action);
     }
 
-    // Always update UI so money changes are visible
     this._updateUI();
   }
 
@@ -496,7 +689,7 @@ export class Game {
     this.emp.update(dt);
     if (this.input.consumeEMP()) {
       if (this.emp.activate(this.drones)) {
-        this.audio.baseHit?.(); // reuse impact sound as EMP pulse; ok if missing
+        this.audio.baseHit?.();
       }
     }
 
@@ -534,7 +727,7 @@ export class Game {
     // ── Wave spawning ─────────────────────────────────────────
     const newDrones = this.waves.update(dt);
     for (const d of newDrones) {
-      if (this._isNight) d.setNightMode(true);
+      if (this._currentPeriod === 'night') d.setNightMode(true);
     }
     this.drones.push(...newDrones);
 
@@ -591,8 +784,13 @@ export class Game {
     // ── Particles ─────────────────────────────────────────────
     this.particles.update(dt);
 
-    // ── Wave complete → open shop ─────────────────────────────
+    // ── Wave complete → final boss win or shop ────────────────
     if (this.waves.isComplete() && this.drones.length === 0) {
+      if (this.wave === MAX_WAVE) {
+        // Final boss wave cleared → win!
+        this._win();
+        return;
+      }
       this.waves.scheduleNext(() => this._openShop(), 3);
     }
 
@@ -602,7 +800,7 @@ export class Game {
   _updateUI() {
     this.ui.update({
       score:       this.score,
-      wave:        this.wave,
+      wave:        this._waveDisplay(this.wave),
       drones:      this.drones.length,
       baseHP:      this.playerHP,
       ammo:        this.turret.getAmmo(),
