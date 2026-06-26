@@ -5,6 +5,8 @@ export class AudioSystem {
   constructor() {
     this.ctx = null;
     this.initialized = false;
+    this._rainSrc  = null;
+    this._rainGain = null;
   }
 
   // Must be called from a user-gesture handler (click / keydown).
@@ -210,6 +212,78 @@ export class AudioSystem {
       osc.connect(gain); gain.connect(ctx.destination);
       osc.start(t); osc.stop(t + 0.2);
     });
+  }
+
+  // ── Rain (synthesized white-noise) ───────────────────────────
+  startRain() {
+    if (!this.initialized || this._rainGain) return;
+    this._resume();
+    const ctx = this.ctx;
+    const sr  = ctx.sampleRate;
+
+    const buf = ctx.createBuffer(1, sr * 2, sr);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+    this._rainSrc  = ctx.createBufferSource();
+    this._rainSrc.buffer = buf;
+    this._rainSrc.loop   = true;
+
+    const hi = ctx.createBiquadFilter();
+    hi.type = 'highpass'; hi.frequency.value = 300;
+    const lo = ctx.createBiquadFilter();
+    lo.type = 'lowpass';  lo.frequency.value = 8000;
+
+    this._rainGain = ctx.createGain();
+    this._rainGain.gain.value = 0;
+
+    this._rainSrc.connect(hi); hi.connect(lo); lo.connect(this._rainGain);
+    this._rainGain.connect(ctx.destination);
+    this._rainSrc.start();
+    this._rainGain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 3.0);
+  }
+
+  stopRain() {
+    if (!this._rainGain) return;
+    const ctx = this.ctx;
+    this._rainGain.gain.cancelScheduledValues(ctx.currentTime);
+    this._rainGain.gain.setValueAtTime(this._rainGain.gain.value, ctx.currentTime);
+    this._rainGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 2.0);
+    const src = this._rainSrc, gain = this._rainGain;
+    this._rainSrc = null; this._rainGain = null;
+    setTimeout(() => { try { src?.stop(); } catch (_) {} }, 2500);
+  }
+
+  // ── Thunder (synthesized crack + rumble) ──────────────────────
+  thunder() {
+    if (!this.initialized) return;
+    this._resume();
+    const ctx = this.ctx, t = ctx.currentTime;
+
+    // Sharp crack
+    const crackBuf = this._noiseBuffer(0.12);
+    const crackSrc  = ctx.createBufferSource();
+    const crackFilt = ctx.createBiquadFilter();
+    const crackGain = ctx.createGain();
+    crackFilt.type = 'bandpass'; crackFilt.frequency.value = 600; crackFilt.Q.value = 0.4;
+    crackSrc.buffer = crackBuf;
+    crackGain.gain.setValueAtTime(0.55, t);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    crackSrc.connect(crackFilt); crackFilt.connect(crackGain); crackGain.connect(ctx.destination);
+    crackSrc.start(t);
+
+    // Rolling deep rumble
+    const rumbleBuf  = this._noiseBuffer(3.0);
+    const rumbleSrc  = ctx.createBufferSource();
+    const rumbleFilt = ctx.createBiquadFilter();
+    const rumbleGain = ctx.createGain();
+    rumbleFilt.type = 'lowpass'; rumbleFilt.frequency.value = 100;
+    rumbleSrc.buffer = rumbleBuf;
+    rumbleGain.gain.setValueAtTime(0, t + 0.04);
+    rumbleGain.gain.linearRampToValueAtTime(0.45, t + 0.18);
+    rumbleGain.gain.exponentialRampToValueAtTime(0.001, t + 3.0);
+    rumbleSrc.connect(rumbleFilt); rumbleFilt.connect(rumbleGain); rumbleGain.connect(ctx.destination);
+    rumbleSrc.start(t);
   }
 
   // ── Base hit alarm ────────────────────────────────────────────

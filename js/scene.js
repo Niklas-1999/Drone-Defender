@@ -8,10 +8,10 @@ const DAY_BG_COL    = new THREE.Color(0x87ceeb);
 const NIGHT_AMB_COL = new THREE.Color(0x1a083a);
 const NIGHT_FOG_COL = new THREE.Color(0x080018);
 const NIGHT_BG_COL  = new THREE.Color(0x0a001e);
-// Evening (sunset) colour constants
-const EVE_AMB_COL   = new THREE.Color(0x6b2a10);
-const EVE_FOG_COL   = new THREE.Color(0x5a1a08);
-const EVE_BG_COL    = new THREE.Color(0x3a0e06);
+// Evening (sunset) colour constants — vivid warm sunset
+const EVE_AMB_COL   = new THREE.Color(0xff8844);
+const EVE_FOG_COL   = new THREE.Color(0xe06030);
+const EVE_BG_COL    = new THREE.Color(0xcc4820);
 
 // ── Rain system ───────────────────────────────────────────────────
 class RainSystem {
@@ -47,6 +47,101 @@ class RainSystem {
       if (a[i*6+4] < -5) { a[i*6+1] += 40; a[i*6+4] += 40; }
     }
     this._attr.needsUpdate = true;
+  }
+}
+
+// ── Lightning system ──────────────────────────────────────────────
+class LightningSystem {
+  constructor(scene) {
+    this._scene     = scene;
+    this._onStrike  = null;
+    this._timer     = 8 + Math.random() * 12; // first strike in 8-20s
+    this._phase     = 'idle';  // 'idle' | 'flash1' | 'gap' | 'flash2' | 'done'
+    this._phaseT    = 0;
+    this._bolt      = null;
+
+    // Persistent flash light (intensity driven per-frame)
+    this._flashLight = new THREE.PointLight(0xddeeff, 0, 600);
+    this._flashLight.position.set(0, 60, -100);
+    scene.add(this._flashLight);
+  }
+
+  setOnStrike(cb) { this._onStrike = cb; }
+
+  // nightFrac: 0 at blend=1, 1 at blend=2
+  update(dt, nightFrac) {
+    if (nightFrac <= 0) { this._flashLight.intensity = 0; return; }
+
+    if (this._phase !== 'idle') {
+      this._tickFlash(dt);
+      return;
+    }
+
+    this._timer -= dt;
+    if (this._timer <= 0) {
+      this._trigger(nightFrac);
+      this._timer = 5 + Math.random() * 20;
+    }
+  }
+
+  _trigger(nightFrac) {
+    const x   = (Math.random() - 0.5) * 120;
+    const z   = -80 - Math.random() * 100;
+    const yTop = 55 + Math.random() * 20;
+
+    // Jagged bolt geometry
+    const pts  = [];
+    const steps = 8 + Math.floor(Math.random() * 5);
+    const yBot  = 18 + Math.random() * 18;
+    for (let i = 0; i <= steps; i++) {
+      const tf = i / steps;
+      const jit = (i === 0 || i === steps) ? 0 : (Math.random() - 0.5) * 9;
+      pts.push(new THREE.Vector3(
+        x + jit,
+        yTop - (yTop - yBot) * tf,
+        z + (Math.random() - 0.5) * 5,
+      ));
+    }
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    this._bolt = new THREE.Line(geo,
+      new THREE.LineBasicMaterial({ color: 0xddeeff, transparent: true, opacity: 0.9 })
+    );
+    this._scene.add(this._bolt);
+
+    this._flashLight.position.set(x, yTop * 0.6, z);
+    this._phase  = 'flash1';
+    this._phaseT = 0;
+
+    // Thunder arrives after distance / 340 m·s⁻¹
+    const dist  = Math.sqrt(x * x + z * z);
+    const delay = (dist / 340) * 1000;
+    setTimeout(() => this._onStrike?.(), delay);
+  }
+
+  _tickFlash(dt) {
+    this._phaseT += dt;
+    if (this._phase === 'flash1') {
+      this._flashLight.intensity = 18;
+      if (this._bolt) this._bolt.visible = true;
+      if (this._phaseT > 0.06) { this._phase = 'gap'; this._phaseT = 0; }
+    } else if (this._phase === 'gap') {
+      this._flashLight.intensity = 0;
+      if (this._bolt) this._bolt.visible = false;
+      if (this._phaseT > 0.07) { this._phase = 'flash2'; this._phaseT = 0; }
+    } else if (this._phase === 'flash2') {
+      this._flashLight.intensity = 12;
+      if (this._bolt) this._bolt.visible = true;
+      if (this._phaseT > 0.05) { this._phase = 'done'; this._phaseT = 0; }
+    } else {
+      this._flashLight.intensity = 0;
+      if (this._bolt) {
+        this._scene.remove(this._bolt);
+        this._bolt.geometry.dispose();
+        this._bolt.material.dispose();
+        this._bolt = null;
+      }
+      this._phase = 'idle';
+    }
   }
 }
 
@@ -121,17 +216,18 @@ class CloudSystem {
     const s = t < 1 ? t : t - 1;  // 0→1 within current segment
     let opacity, r, g, b;
     if (t < 1) {
-      // Day (white, light) → Evening (large, warm orange-purple)
+      // Day (white) → Evening (warm amber — matches start of night segment)
       opacity = 0.55 + s * 0.30;
-      r = 1;
-      g = 1    - s * 0.20;
-      b = 1    - s * 0.58;
+      r = 1.0 - s * 0.08;   // 1.00 → 0.92
+      g = 1.0 - s * 0.38;   // 1.00 → 0.62
+      b = 1.0 - s * 0.65;   // 1.00 → 0.35
     } else {
-      // Evening → Night (dark charcoal, heavy overcast)
+      // Evening → Night: sqrt easing makes clouds go dark quickly at start of night
+      const sq = Math.sqrt(s);
       opacity = 0.85 + s * 0.13;
-      r = 1    - s * 0.72;
-      g = 0.80 - s * 0.68;
-      b = 0.42 - s * 0.34;
+      r = 0.92 - sq * 0.85;   // 0.92 → 0.07
+      g = 0.62 - sq * 0.54;   // 0.62 → 0.08
+      b = 0.35 - sq * 0.22;   // 0.35 → 0.13 (keep slight blue tint)
     }
     for (const c of this._clouds) {
       c.material.opacity = opacity;
@@ -165,8 +261,9 @@ export class SceneBuilder {
     this._eveSky   = null;
     this._nightSky = null;
     this._stars    = null;
-    this._rain     = null;
-    this._clouds   = null;
+    this._rain      = null;
+    this._clouds    = null;
+    this._lightning = null;
   }
 
   build() {
@@ -176,8 +273,9 @@ export class SceneBuilder {
     this._addNearBuildings();
     this._addSkyscrapers();
     this._addCityFloor();
-    this._rain   = new RainSystem(this._scene);
-    this._clouds = new CloudSystem(this._scene);
+    this._rain      = new RainSystem(this._scene);
+    this._clouds    = new CloudSystem(this._scene);
+    this._lightning = new LightningSystem(this._scene);
     this._applyBlend(0); // start as full daytime
   }
 
@@ -202,11 +300,13 @@ export class SceneBuilder {
     if (this._rain) this._rain.setVisible(false);
   }
 
-  setRainVisible(v) { if (this._rain) this._rain.setVisible(v); }
+  setRainVisible(v)         { if (this._rain)      this._rain.setVisible(v); }
+  setLightningCallback(cb)  { if (this._lightning) this._lightning.setOnStrike(cb); }
 
   // Call every frame from game.js while transitioning or rain is active
   update(dt) {
-    if (this._rain) this._rain.update(dt);
+    if (this._rain)      this._rain.update(dt);
+    if (this._lightning) this._lightning.update(dt, Math.max(0, this.currentBlend - 1));
     if (!this._transitioning) return;
     this._transitionT += dt;
     const raw   = Math.min(this._transitionT / this._transitionDur, 1);
@@ -246,13 +346,13 @@ export class SceneBuilder {
       new THREE.SphereGeometry(378, 32, 16),
       new THREE.MeshBasicMaterial({
         map: this._makeSkyTex([
-          [0.00, '#0c0220'],
-          [0.22, '#28085a'],
-          [0.42, '#5a1535'],
-          [0.62, '#962e10'],
-          [0.78, '#c04818'],
-          [0.90, '#cc5820'],
-          [1.00, '#7a2808'],
+          [0.00, '#1c0648'],
+          [0.22, '#50159a'],
+          [0.42, '#9c2560'],
+          [0.60, '#e04525'],
+          [0.78, '#f07030'],
+          [0.90, '#f8b040'],
+          [1.00, '#e86830'],
         ]),
         side: THREE.BackSide,
         transparent: true,
@@ -279,27 +379,6 @@ export class SceneBuilder {
       })
     );
     this._scene.add(this._nightSky);
-
-    // Stars — only fade in at night
-    const STARS = 1400;
-    const pos = new Float32Array(STARS * 3);
-    for (let i = 0; i < STARS; i++) {
-      const th = Math.random() * Math.PI * 2;
-      const ph = Math.random() * Math.PI * 0.45;
-      const r  = 362 + Math.random() * 10;
-      pos[i*3  ] = r * Math.sin(ph) * Math.cos(th);
-      pos[i*3+1] = r * Math.cos(ph) + 15;
-      pos[i*3+2] = r * Math.sin(ph) * Math.sin(th);
-    }
-    const sg = new THREE.BufferGeometry();
-    sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this._stars = new THREE.Points(sg,
-      new THREE.PointsMaterial({
-        color: 0xdde8ff, size: 0.85, sizeAttenuation: true,
-        transparent: true, opacity: 0,
-      })
-    );
-    this._scene.add(this._stars);
 
     // Start as day
     this._scene.fog = new THREE.FogExp2(0xd0eeff, 0.006);
@@ -358,7 +437,6 @@ export class SceneBuilder {
 
     this._eveSky.material.opacity    = eveFrac;
     this._nightSky.material.opacity  = ngtFrac;
-    this._stars.material.opacity     = ngtFrac;
 
     const fromBG = t < 1 ? DAY_BG_COL  : EVE_BG_COL;
     const toBG   = t < 1 ? EVE_BG_COL  : NIGHT_BG_COL;
@@ -372,13 +450,16 @@ export class SceneBuilder {
     const fromAmb = t < 1 ? DAY_AMB_COL : EVE_AMB_COL;
     const toAmb   = t < 1 ? EVE_AMB_COL : NIGHT_AMB_COL;
     this._ambient.color.copy(fromAmb.clone().lerp(toAmb, segFrac));
-    this._ambient.intensity = t < 1 ? 1.4 - 0.25 * segFrac : 1.15 - 0.25 * segFrac;
+    this._ambient.intensity = t < 1 ? 1.4 : 1.4 - 0.5 * segFrac; // stay bright through evening
 
-    // Sun: full at day, golden-dim at evening, off at night
-    this._sun.intensity      = t < 1 ? 3.0 - 2.5 * segFrac : 0.5 * (1 - segFrac);
-    this._moon.intensity     = ngtFrac * 0.35;
-    for (const l of this._neonLights) l.intensity = l.userData.ni * ngtFrac;
-    this._streetGlow.intensity = 6 * ngtFrac;
+    // Sun: bright at day, golden at evening, off at night
+    this._sun.intensity  = t < 1 ? 3.0 - 1.5 * segFrac : 1.5 * (1 - segFrac);
+    this._moon.intensity = ngtFrac * 0.35;
+
+    // Neon city lights: start fading in at blend 0.4 (mid-evening), full at night
+    const neonFrac = Math.max(0, (t - 0.4) / 1.6);
+    for (const l of this._neonLights) l.intensity = l.userData.ni * neonFrac;
+    this._streetGlow.intensity = 6 * neonFrac;
 
     this._clouds?.update(t);
   }

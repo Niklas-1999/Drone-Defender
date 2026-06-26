@@ -439,7 +439,9 @@ export class Game {
     this._currentPeriod    = 'day';
     this._skyTransitioning = false;
     this._turretLight.intensity = 0;
+    this.audio.stopRain();
     this.sceneBuilder.resetToDay();
+    this.sceneBuilder.setLightningCallback(() => this.audio.thunder());
 
     this._startMusic();
     this._startNextWave();
@@ -507,9 +509,11 @@ export class Game {
       this.sceneBuilder.startTransition(newPeriod, 4.0, () => {
         this._currentPeriod = newPeriod;
         this._skyTransitioning = false;
-        for (const d of this.drones) d.setNightMode(this._currentPeriod === 'night');
-        this._turretLight.intensity = this._currentPeriod === 'night' ? 3 : 0;
-        if (this._currentPeriod === 'night') this.sceneBuilder.setRainVisible(true);
+        for (const d of this.drones) d.setNightMode(this._currentPeriod !== 'day');
+        if (this._currentPeriod === 'night') {
+          this.sceneBuilder.setRainVisible(true);
+          this.audio.startRain();
+        }
         this._launchWave();
       });
     } else {
@@ -650,7 +654,7 @@ export class Game {
       this._updateMusic(dt);
       this.sceneBuilder.update(dt); // always update (rain + sky transition)
       if (this._skyTransitioning) {
-        this._turretLight.intensity = Math.max(0, this.sceneBuilder.currentBlend - 1) * 3;
+        this._turretLight.intensity = this.sceneBuilder.currentBlend * 1.5;
       } else {
         this._update(dt, frame);
       }
@@ -686,6 +690,9 @@ export class Game {
 
   // ── Game update (playing state) ───────────────────────────────
   _update(dt, frame) {
+    // Drive turret / drone glow from blend every frame (covers evening + night)
+    this._turretLight.intensity = this.sceneBuilder.currentBlend * 1.5;
+
     // ── EMP ───────────────────────────────────────────────────
     this.emp.update(dt);
     if (this.input.consumeEMP()) {
@@ -728,7 +735,7 @@ export class Game {
     // ── Wave spawning ─────────────────────────────────────────
     const newDrones = this.waves.update(dt);
     for (const d of newDrones) {
-      if (this._currentPeriod === 'night') d.setNightMode(true);
+      if (this._currentPeriod !== 'day') d.setNightMode(true);
     }
     this.drones.push(...newDrones);
 
