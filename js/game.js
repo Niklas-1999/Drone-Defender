@@ -625,18 +625,12 @@ export class Game {
 
     this.input.update(dt, frame, this.vrMode);
 
-    // VR: hold both grips for 1s to toggle the cheat panel
+    // VR: Y button toggles the cheat panel
     if (this.vrMode && this._cheatVRMesh) {
-      if (this.input.areBothGripping()) {
-        this._cheatGripTimer += dt;
-        if (this._cheatGripTimer >= 1.0) {
-          this._cheatGripTimer = -10; // debounce: must release before re-triggering
-          const vis = !this._cheatVRMesh.visible;
-          this._cheatVRMesh.visible = vis;
-          if (vis) this._positionCheatVRPanel();
-        }
-      } else {
-        this._cheatGripTimer = 0; // always reset when grips released
+      if (this.input.consumeY()) {
+        const vis = !this._cheatVRMesh.visible;
+        this._cheatVRMesh.visible = vis;
+        if (vis) this._positionCheatVRPanel();
       }
       if (this._cheatVRMesh.visible) this._updateCheatVRPanel();
     }
@@ -1043,7 +1037,7 @@ export class Game {
     ctx.fillStyle = '#00ddff'; ctx.font = 'bold 26px monospace';
     ctx.fillText('⚠  CHEAT MENU  ⚠', CW/2, 36);
     ctx.fillStyle = '#334466'; ctx.font = '12px monospace';
-    ctx.fillText('Hold BOTH GRIPS 1 second to open / close', CW/2, 60);
+    ctx.fillText('Press Y (left controller) to open / close', CW/2, 60);
 
     this._cheatVRBtnZones = [];
 

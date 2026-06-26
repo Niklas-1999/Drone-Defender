@@ -30,6 +30,8 @@ export class InputManager {
     this._reloadWas          = false;
     this._empJustPressed     = false;
     this._empWasL            = false;
+    this._yJustPressed       = false;
+    this._yWas               = false;
     this._shopKey            = null;  // '1'-'9' or '0' during shop
 
     this._setupDesktop();
@@ -192,6 +194,11 @@ export class InputManager {
         const xBtn = gp.buttons[4]?.pressed ?? false;
         if (xBtn && !this._empWasL) this._empJustPressed = true;
         this._empWasL = xBtn;
+
+        // Y button (index 5) on left controller = cheat menu toggle
+        const yBtn = gp.buttons[5]?.pressed ?? false;
+        if (yBtn && !this._yWas) this._yJustPressed = true;
+        this._yWas = yBtn;
       }
     }
   }
@@ -205,6 +212,12 @@ export class InputManager {
   consumeEMP() {
     const v = this._empJustPressed;
     this._empJustPressed = false;
+    return v;
+  }
+
+  consumeY() {
+    const v = this._yJustPressed;
+    this._yJustPressed = false;
     return v;
   }
 
