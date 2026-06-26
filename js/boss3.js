@@ -1,31 +1,36 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js';
 import { ShieldOrb } from './boss.js';
 
-// Robot anchored here — centered ahead of player, far back
+// Robot stands here — far back, centred on the arena
 const RX = 0, RY = 0, RZ = -72;
 
-// Phase-3 head floats into the normal combat zone
+// Hover spots for phase-3 head (inside normal combat zone)
 const HEAD_SPOTS = [
-  new THREE.Vector3(  0, 14, -32),
-  new THREE.Vector3(-18, 11, -26),
-  new THREE.Vector3( 18, 11, -26),
-  new THREE.Vector3(-10, 16, -44),
-  new THREE.Vector3( 10, 16, -44),
-  new THREE.Vector3(  0, 10, -22),
-  new THREE.Vector3(-16, 13, -36),
-  new THREE.Vector3( 16, 13, -36),
+  new THREE.Vector3(  0, 14, -30),
+  new THREE.Vector3(-16, 11, -24),
+  new THREE.Vector3( 16, 11, -24),
+  new THREE.Vector3( -8, 16, -42),
+  new THREE.Vector3(  8, 16, -42),
+  new THREE.Vector3(  0, 10, -20),
+  new THREE.Vector3(-14, 13, -34),
+  new THREE.Vector3( 14, 13, -34),
 ];
 
-function shuffle(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
+function shuffled(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  return arr;
+  return a;
 }
 
-// ── Boss3Rocket ─────────────────────────────────────────────────
-// Bigger, tougher version of Missile — same update() signature
+// ── Material helpers ────────────────────────────────────────────
+const mkLambert = (hex) => new THREE.MeshLambertMaterial({ color: hex });
+const mkBasic   = (hex) => new THREE.MeshBasicMaterial({ color: hex });
+const mkMesh    = (geo, mat) => new THREE.Mesh(geo, mat);
+
+// ── Boss3Rocket ──────────────────────────────────────────────────
 export class Boss3Rocket {
   constructor(fromPos, targetPos, scene) {
     this.hp     = 20;
@@ -33,67 +38,67 @@ export class Boss3Rocket {
     this.dead   = false;
     this.kind   = 'missile';
     this.damage = 35;
-    this._scene = scene;
     this.spec   = { size: 0.70 };
-    this.speed  = 11;
+    this._scene = scene;
+    this._speed = 12;
     this._hitFlash = 0;
-    this._dir   = new THREE.Vector3().subVectors(targetPos, fromPos).normalize();
+
+    const dir = new THREE.Vector3().subVectors(targetPos, fromPos).normalize();
+    this._dir = dir.clone();
 
     this.group = new THREE.Group();
     this.group.position.copy(fromPos);
-    this._buildMesh();
-    this.group.lookAt(fromPos.clone().add(this._dir));
+    this.group.lookAt(fromPos.clone().add(dir));
+    this._build();
     scene.add(this.group);
   }
 
-  _buildMesh() {
-    const darkMat = new THREE.MeshLambertMaterial({ color: 0x220000 });
-    const redMat  = new THREE.MeshLambertMaterial({ color: 0xcc1100 });
-    const finMat  = new THREE.MeshLambertMaterial({ color: 0x880000, side: THREE.DoubleSide });
-
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 1.8, 8), darkMat);
+  _build() {
+    const body = mkMesh(new THREE.CylinderGeometry(0.25, 0.25, 2.0, 7), mkLambert(0x332200));
     body.rotation.x = Math.PI / 2;
     this.group.add(body);
 
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.75, 8), redMat);
+    const nose = mkMesh(new THREE.ConeGeometry(0.25, 0.9, 7), mkBasic(0xffcc00));
     nose.rotation.x = -Math.PI / 2;
-    nose.position.z = -1.28;
+    nose.position.z = -1.45;
     this.group.add(nose);
 
-    this._exhaust = new THREE.Mesh(
-      new THREE.SphereGeometry(0.28, 8, 5),
-      new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.9 })
+    this._exhaust = mkMesh(
+      new THREE.SphereGeometry(0.32, 7, 4),
+      new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.88 })
     );
-    this._exhaust.position.z = 0.98;
+    this._exhaust.position.z = 1.1;
     this.group.add(this._exhaust);
 
     for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2;
-      const fin = new THREE.Mesh(new THREE.PlaneGeometry(0.38, 0.28), finMat);
-      fin.position.set(Math.cos(a) * 0.22, Math.sin(a) * 0.22, 0.95);
-      fin.rotation.x = Math.PI / 2;
+      const a   = (i / 4) * Math.PI * 2;
+      const fin = mkMesh(
+        new THREE.PlaneGeometry(0.4, 0.3),
+        new THREE.MeshBasicMaterial({ color: 0xddbb00, side: THREE.DoubleSide })
+      );
+      fin.position.set(Math.cos(a) * 0.24, Math.sin(a) * 0.24, 1.0);
       fin.rotation.z = a;
       this.group.add(fin);
     }
 
-    const hpCanvas = document.createElement('canvas');
-    hpCanvas.width = 64; hpCanvas.height = 6;
-    this._hpCtx = hpCanvas.getContext('2d');
-    this._hpTex = new THREE.CanvasTexture(hpCanvas);
-    this._hpMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.0, 0.12),
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 6;
+    this._hpCtx = c.getContext('2d');
+    this._hpTex = new THREE.CanvasTexture(c);
+    this._hpBar = mkMesh(
+      new THREE.PlaneGeometry(1.2, 0.14),
       new THREE.MeshBasicMaterial({ map: this._hpTex, transparent: true, depthTest: false })
     );
-    this._hpMesh.position.y = 0.55;
-    this.group.add(this._hpMesh);
+    this._hpBar.position.y = 0.6;
+    this.group.add(this._hpBar);
     this._redrawHP();
   }
 
   _redrawHP() {
     const ctx = this._hpCtx;
     ctx.clearRect(0, 0, 64, 6);
-    ctx.fillStyle = '#330000'; ctx.fillRect(0, 0, 64, 6);
-    ctx.fillStyle = '#ff3300'; ctx.fillRect(0, 0, 64 * Math.max(0, this.hp / this.maxHp), 6);
+    ctx.fillStyle = '#221100'; ctx.fillRect(0, 0, 64, 6);
+    ctx.fillStyle = '#ffcc00'; ctx.fillRect(0, 0, 64 * Math.max(0, this.hp / this.maxHp), 6);
     this._hpTex.needsUpdate = true;
   }
 
@@ -109,14 +114,19 @@ export class Boss3Rocket {
   update(dt, targetPos, camera) {
     if (this.dead) return { dist: Infinity };
     this._hitFlash = Math.max(0, this._hitFlash - dt);
-    this._exhaust.material.opacity = 0.75 + Math.sin(Date.now() * 0.025) * 0.15;
+    this._exhaust.material.opacity = 0.7 + Math.sin(Date.now() * 0.03) * 0.18;
 
     const toTarget = new THREE.Vector3().subVectors(targetPos, this.group.position);
     const dist     = toTarget.length();
-    this._dir.lerp(toTarget.normalize(), 0.06).normalize();
-    this.group.position.addScaledVector(this._dir, this.speed * dt);
+    this._dir.lerp(toTarget.normalize(), 0.065).normalize();
+    this.group.position.addScaledVector(this._dir, this._speed * dt);
     this.group.lookAt(this.group.position.clone().add(this._dir));
-    if (camera) this._hpMesh.lookAt(camera.getWorldPosition(new THREE.Vector3()));
+
+    if (camera) {
+      const camPos = new THREE.Vector3();
+      camera.getWorldPosition(camPos);
+      this._hpBar.lookAt(camPos);
+    }
     return { dist };
   }
 
@@ -126,13 +136,13 @@ export class Boss3Rocket {
   }
 }
 
-// ── Boss3Part (shoulder / neck hitbox indicator) ─────────────────
+// ── Boss3Part — spinning target-ring hitbox indicator ────────────
 export class Boss3Part {
   constructor(scene, worldPos, hp, kind, hitSize) {
     this.hp     = hp;
     this.maxHp  = hp;
     this.dead   = false;
-    this.kind   = kind;       // 'shoulder' | 'neck'
+    this.kind   = kind;
     this.spec   = { size: hitSize };
     this._scene = scene;
     this._hitFlash  = 0;
@@ -141,59 +151,56 @@ export class Boss3Part {
     this.group = new THREE.Group();
     this.group.position.copy(worldPos);
     scene.add(this.group);
-    this._buildVisual(kind, hitSize);
+    this._build(hitSize);
   }
 
-  _buildVisual(kind, size) {
-    const isPrimary = kind === 'neck';
-    const ringCol   = isPrimary ? 0x00ffcc : 0xffaa00;
-    const ringCol2  = isPrimary ? 0x00ddaa : 0xdd8800;
+  _build(size) {
+    const isNeck = this.kind === 'neck';
+    const col1   = isNeck ? 0x00ffcc : 0xffcc00;
+    const col2   = isNeck ? 0x00aa88 : 0xdd9900;
 
-    // Outer target ring — spins to draw the eye
-    this._ring = new THREE.Mesh(
-      new THREE.TorusGeometry(size * 1.0, size * 0.07, 8, 32),
-      new THREE.MeshBasicMaterial({ color: ringCol })
+    this._ring = mkMesh(
+      new THREE.TorusGeometry(size, size * 0.075, 8, 32),
+      mkBasic(col1)
     );
     this._ring.rotation.x = Math.PI / 2;
     this.group.add(this._ring);
 
-    // Second ring at perpendicular angle
-    this._ring2 = new THREE.Mesh(
-      new THREE.TorusGeometry(size * 1.0, size * 0.05, 6, 24),
-      new THREE.MeshBasicMaterial({ color: ringCol2, transparent: true, opacity: 0.7 })
+    this._ring2 = mkMesh(
+      new THREE.TorusGeometry(size, size * 0.05, 6, 24),
+      new THREE.MeshBasicMaterial({ color: col2, transparent: true, opacity: 0.7 })
     );
     this.group.add(this._ring2);
 
-    // HP bar above the target
-    const hpCanvas = document.createElement('canvas');
-    hpCanvas.width = 128; hpCanvas.height = 12;
-    this._hpCtx = hpCanvas.getContext('2d');
-    this._hpTex = new THREE.CanvasTexture(hpCanvas);
-    this._hpMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(size * 2.4, size * 0.22),
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 14;
+    this._hpCtx = c.getContext('2d');
+    this._hpTex = new THREE.CanvasTexture(c);
+    this._hpBar = mkMesh(
+      new THREE.PlaneGeometry(size * 2.6, size * 0.24),
       new THREE.MeshBasicMaterial({ map: this._hpTex, transparent: true, depthTest: false })
     );
-    this._hpMesh.position.y = size * 1.6;
-    this.group.add(this._hpMesh);
+    this._hpBar.position.y = size * 1.7;
+    this.group.add(this._hpBar);
     this._redrawHP();
   }
 
   _redrawHP() {
     const ctx = this._hpCtx;
-    ctx.clearRect(0, 0, 128, 12);
-    ctx.fillStyle = '#001400'; ctx.fillRect(0, 0, 128, 12);
+    ctx.clearRect(0, 0, 128, 14);
+    ctx.fillStyle = '#1a1100'; ctx.fillRect(0, 0, 128, 14);
     const pct = Math.max(0, this.hp / this.maxHp);
-    ctx.fillStyle = this.kind === 'neck' ? '#00ffcc' : '#ffaa00';
-    ctx.fillRect(0, 0, 128 * pct, 12);
-    ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 1;
-    ctx.strokeRect(0.5, 0.5, 127, 11);
+    ctx.fillStyle = this.kind === 'neck' ? '#00ffcc' : '#ffcc00';
+    ctx.fillRect(0, 0, 128 * pct, 14);
+    ctx.strokeStyle = '#888800'; ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, 127, 13);
     this._hpTex.needsUpdate = true;
   }
 
   hit(damage = 1) {
     if (this.dead) return false;
     this.hp -= damage;
-    this._hitFlash = 0.08;
+    this._hitFlash = 0.09;
     this._redrawHP();
     if (this.hp <= 0) { this.dead = true; return true; }
     return false;
@@ -203,10 +210,16 @@ export class Boss3Part {
     if (this.dead) return;
     this._animTimer += dt;
     this._hitFlash = Math.max(0, this._hitFlash - dt);
-    this._ring.rotation.y  += dt * 1.8;
-    this._ring2.rotation.x += dt * 1.4;
-    this._ring.material.color.setHex(this._hitFlash > 0 ? 0xffffff : (this.kind === 'neck' ? 0x00ffcc : 0xffaa00));
-    if (camera) this._hpMesh.lookAt(camera.getWorldPosition(new THREE.Vector3()));
+    this._ring.rotation.y  += dt * 2.0;
+    this._ring2.rotation.x += dt * 1.5;
+    this._ring.material.color.setHex(
+      this._hitFlash > 0 ? 0xffffff : (this.kind === 'neck' ? 0x00ffcc : 0xffcc00)
+    );
+    if (camera) {
+      const p = new THREE.Vector3();
+      camera.getWorldPosition(p);
+      this._hpBar.lookAt(p);
+    }
   }
 
   destroy() {
@@ -215,7 +228,7 @@ export class Boss3Part {
   }
 }
 
-// ── Boss 3 ─────────────────────────────────────────────────────
+// ── Boss 3 — Giant Yellow Robot ──────────────────────────────────
 export class Boss3 {
   constructor(scene) {
     this._scene = scene;
@@ -224,132 +237,136 @@ export class Boss3 {
     this.points = 20000;
     this.phase  = 1;
 
-    // Phase 3 head state
+    // Phase-3 head HP
     this.hp    = 60;
     this.maxHp = 60;
-    this.spec  = { size: 2.5 };
+    this.spec  = { size: 2.8 };
 
-    // Phase 3 shields
-    this.shields      = [];
+    // Phase-3 shields (timer-based respawn — final boss is tough)
+    this.shields          = [];
     this._vulnerable      = false;
     this._vulnerableTimer = 0;
-    this._vulnerableDur   = 7.0;
+    this._vulnerableDur   = 6.0;
     this._hitFlash        = 0;
 
-    // Phase 3 movement (Boss1-style hover-and-zip)
-    this._spots      = shuffle([...HEAD_SPOTS]);
+    // Phase-3 hover-and-zip movement
+    this._spots      = shuffled(HEAD_SPOTS);
     this._spotIdx    = 0;
     this._moveState  = 'hovering';
     this._hoverTimer = 0;
-    this._hoverDur   = 4.0;
-    this._zipSpeed   = 75;
+    this._hoverDur   = 3.5;
     this._zipTarget  = null;
+    this._zipSpeed   = 70;
 
-    // Shooting
-    this._shotSide        = 0;     // 0=left, 1=right for phase 1 alternating
-    this._missileTimer    = 2.5;
-    this._missileInterval = 3.0;   // phase 1 base interval
+    // Firing state (shared across phases)
     this._canFireLeft     = true;
     this._canFireRight    = true;
+    this._shotSide        = 0;
+    this._missileTimer    = 2.2;
+    this._missileInterval = 2.5;
 
     this._animTimer = 0;
 
-    // Main group — doubles as head entity in phase 3
+    // boss.group doubles as the head entity in phase 3
     this.group = new THREE.Group();
     scene.add(this.group);
 
-    // Parts array (populated by _buildParts, updated by phase transitions)
+    // Hittable parts (changes per phase)
     this.parts = [];
 
     this._buildRobot(scene);
     this._buildParts(scene);
-    this._buildPhase3HPBar();
+    this._buildP3Bar();
   }
 
-  // ── Robot body ───────────────────────────────────────────────
+  // ── Construction ─────────────────────────────────────────────
+
   _buildRobot(scene) {
     this._robotGroup = new THREE.Group();
     this._robotGroup.position.set(RX, RY, RZ);
     scene.add(this._robotGroup);
 
-    const dark   = new THREE.MeshLambertMaterial({ color: 0x161626 });
-    const mid    = new THREE.MeshLambertMaterial({ color: 0x252540 });
-    const joint  = new THREE.MeshLambertMaterial({ color: 0x0a0a18 });
-    const redAcc = new THREE.MeshLambertMaterial({ color: 0xff2200 });
+    const body  = mkLambert(0xbbaa00);  // dark gold
+    const dark  = mkLambert(0x332200);  // dark brown-yellow
+    const joint = mkLambert(0x221a00);  // very dark
 
-    // ── Legs ────────────────────────────────────────────────
-    for (const sx of [-4.5, 4.5]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.5, 14, 8), dark);
+    // Legs
+    for (const sx of [-5.5, 5.5]) {
+      const leg = mkMesh(new THREE.BoxGeometry(5, 14, 5), body);
       leg.position.set(sx, 5, 0);
       this._robotGroup.add(leg);
-      const knee = new THREE.Mesh(new THREE.SphereGeometry(2.4, 10, 8), mid);
-      knee.position.set(sx, 12, 0);
-      this._robotGroup.add(knee);
+
+      const kpad = mkMesh(new THREE.BoxGeometry(6.5, 3, 6.5), dark);
+      kpad.position.set(sx, 10, 2.5);
+      this._robotGroup.add(kpad);
+
+      const ankle = mkMesh(new THREE.BoxGeometry(4.5, 1, 4.5), mkBasic(0xffcc00));
+      ankle.position.set(sx, -1.5, 0);
+      this._robotGroup.add(ankle);
     }
 
-    // ── Torso ────────────────────────────────────────────────
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(15, 14, 9), dark);
-    torso.position.set(0, 20, 0);
+    // Torso
+    const torso = mkMesh(new THREE.BoxGeometry(15, 16, 10), body);
+    torso.position.set(0, 22, 0);
     this._robotGroup.add(torso);
 
-    // Chest panel + glowing core
-    const chest = new THREE.Mesh(new THREE.BoxGeometry(7, 6, 0.5), mid);
-    chest.position.set(0, 20, 4.75);
+    const chest = mkMesh(new THREE.BoxGeometry(9, 9, 1.2), dark);
+    chest.position.set(0, 22, 5.6);
     this._robotGroup.add(chest);
 
-    this._coreGlow = new THREE.Mesh(
-      new THREE.SphereGeometry(1.6, 10, 8),
-      new THREE.MeshBasicMaterial({ color: 0xff3300 })
-    );
-    this._coreGlow.position.set(0, 21, 5.2);
+    // Pulsing core — octahedron (matches drone aesthetic)
+    this._coreGlow = mkMesh(new THREE.OctahedronGeometry(2.2, 0), mkBasic(0xffff00));
+    this._coreGlow.position.set(0, 22, 6.2);
     this._robotGroup.add(this._coreGlow);
 
-    for (const sx of [-5.5, 5.5]) {
-      const vent = new THREE.Mesh(new THREE.BoxGeometry(1.5, 3, 0.5), redAcc);
-      vent.position.set(sx, 19, 4.8);
+    for (const sx of [-6, 6]) {
+      const vent = mkMesh(new THREE.BoxGeometry(1.8, 6, 0.8), mkBasic(0xddbb00));
+      vent.position.set(sx, 22, 5.8);
       this._robotGroup.add(vent);
     }
 
-    // ── Neck ────────────────────────────────────────────────
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.8, 4, 8), joint);
-    neck.position.set(0, 29, 0);
-    this._robotGroup.add(neck);
+    // Shoulder blocks (visual caps above arms)
+    for (const sx of [-10, 10]) {
+      const sb = mkMesh(new THREE.BoxGeometry(6, 6, 7), body);
+      sb.position.set(sx, 30, 0);
+      this._robotGroup.add(sb);
 
-    // ── Head ────────────────────────────────────────────────
+      const sp = mkMesh(new THREE.BoxGeometry(7, 1.2, 7.5), mkBasic(0xffdd00));
+      sp.position.set(sx, 33.5, 0);
+      this._robotGroup.add(sp);
+    }
+
+    // Neck cylinder
+    const nk = mkMesh(new THREE.CylinderGeometry(2.2, 3, 5, 8), joint);
+    nk.position.set(0, 37, 0);
+    this._robotGroup.add(nk);
+
+    // Head group (detaches in phase 3)
     this._headGroup = new THREE.Group();
-    this._headGroup.position.set(0, 33, 0);
+    this._headGroup.position.set(0, 42, 0);
     this._robotGroup.add(this._headGroup);
 
-    const headBody = new THREE.Mesh(new THREE.BoxGeometry(10, 10, 9), dark);
-    this._headGroup.add(headBody);
+    // Head — large octahedron matches Boss-1 DNA
+    const head = mkMesh(new THREE.OctahedronGeometry(5.5, 1), mkLambert(0xbbaa00));
+    this._headGroup.add(head);
 
-    const forehead = new THREE.Mesh(new THREE.BoxGeometry(6, 2, 0.5), mid);
-    forehead.position.set(0, 3.8, 4.75);
-    this._headGroup.add(forehead);
-
-    // Eyes
+    // Eyes (orange glow like drone scouts)
     this._eyes = [];
-    for (const ex of [-2.5, 2.5]) {
-      const eye = new THREE.Mesh(
-        new THREE.SphereGeometry(1.0, 10, 8),
-        new THREE.MeshBasicMaterial({ color: 0xff5500 })
-      );
-      eye.position.set(ex, 0.5, 4.75);
+    for (const ex of [-2.2, 2.2]) {
+      const eye = mkMesh(new THREE.SphereGeometry(1.1, 8, 6), mkBasic(0xff8800));
+      eye.position.set(ex, 0.5, 5.0);
       this._headGroup.add(eye);
       this._eyes.push(eye);
     }
 
-    // Mouth slit
-    this._mouth = new THREE.Mesh(
-      new THREE.BoxGeometry(5, 1.2, 0.4),
-      new THREE.MeshBasicMaterial({ color: 0xff0000 })
-    );
-    this._mouth.position.set(0, -2.5, 4.75);
+    // Mouth emitter glow
+    this._mouth = mkMesh(new THREE.BoxGeometry(4.5, 1.4, 0.6), mkBasic(0xffff00));
+    this._mouth.position.set(0, -2.2, 5.1);
     this._headGroup.add(this._mouth);
 
-    // Phase 3 shield dome (on head)
-    this._shieldDome = new THREE.Mesh(
-      new THREE.SphereGeometry(4.5, 20, 14),
+    // Phase-3 turquoise shield dome (transferred with headGroup)
+    this._shieldDome = mkMesh(
+      new THREE.SphereGeometry(6.5, 20, 14),
       new THREE.MeshBasicMaterial({
         color: 0x00ddcc, transparent: true, opacity: 0.15,
         side: THREE.DoubleSide, depthWrite: false,
@@ -358,122 +375,132 @@ export class Boss3 {
     this._shieldDome.visible = false;
     this._headGroup.add(this._shieldDome);
 
-    // ── Arms (removable groups) ──────────────────────────────
-    this._leftArmGroup  = this._buildArm(-1);
-    this._rightArmGroup = this._buildArm( 1);
+    // Head light follows the head into phase 3
+    const hl = new THREE.PointLight(0xffdd44, 12, 28);
+    hl.position.set(0, 2, 0);
+    this._headGroup.add(hl);
+
+    // Arms
+    this._leftArmGroup  = this._buildArm(-1, body, dark, joint);
+    this._rightArmGroup = this._buildArm( 1, body, dark, joint);
     this._robotGroup.add(this._leftArmGroup);
     this._robotGroup.add(this._rightArmGroup);
 
-    // Hand firing positions in world space (robot is static in phases 1&2)
-    this._leftHandPos  = new THREE.Vector3(RX - 13, RY + 6,  RZ);
-    this._rightHandPos = new THREE.Vector3(RX + 13, RY + 6,  RZ);
-    // Mouth position: headGroup.y=33, mouth local y=-2.5, local z=4.75
-    this._mouthPos = new THREE.Vector3(RX, RY + 30.5, RZ + 4.75);
+    // Firing positions in world space.
+    // Robot at z=-72; arms at x=±12, fist cannon tip at local z=+10.2 → world z=-61.8
+    this._leftHandPos  = new THREE.Vector3(RX - 12, RY + 4, RZ + 10);
+    this._rightHandPos = new THREE.Vector3(RX + 12, RY + 4, RZ + 10);
+    // Mouth: headGroup y=42, mouth local y=-2.2 z=5.1 → world y=39.8 z=-66.9
+    this._mouthPos = new THREE.Vector3(RX, RY + 39.8, RZ + 5.1);
+
+    // Multiple PointLights to illuminate the giant body at night
+    const lightDefs = [
+      [0xffee66, 16, 70, -14, 32, 14],
+      [0xffee66, 16, 70,  14, 32, 14],
+      [0xffdd44, 12, 60,   0, 12, 16],
+      [0xffffff,  8, 80,   0, 55,  0],
+      [0xffcc00, 10, 55,   0,  0, 16],
+    ];
+    for (const [color, intensity, dist, x, y, z] of lightDefs) {
+      const light = new THREE.PointLight(color, intensity, dist);
+      light.position.set(x, y, z);
+      this._robotGroup.add(light);
+    }
   }
 
-  _buildArm(side) {
-    const dark  = new THREE.MeshLambertMaterial({ color: 0x161626 });
-    const joint = new THREE.MeshLambertMaterial({ color: 0x0a0a18 });
-    const g     = new THREE.Group();
-    const x     = side * 9.5;
+  _buildArm(side, bodyMat, darkMat, jointMat) {
+    const g  = new THREE.Group();
+    const sx = side * 12;
 
-    // Shoulder sphere (visual cap)
-    g.add(Object.assign(
-      new THREE.Mesh(new THREE.SphereGeometry(3.0, 10, 8), dark),
-      { position: new THREE.Vector3(x, 27, 0) }
-    ));
-
-    // Upper arm
-    const ua = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.0, 13, 7), dark);
-    ua.position.set(side * 11.5, 20, 0);
+    const ua = mkMesh(new THREE.BoxGeometry(4.5, 12, 4.5), bodyMat);
+    ua.position.set(sx, 23, 0);
     g.add(ua);
 
-    // Elbow
-    const el = new THREE.Mesh(new THREE.SphereGeometry(1.3, 8, 6), joint);
-    el.position.set(side * 11.5, 14, 0);
-    g.add(el);
+    const elbow = mkMesh(new THREE.SphereGeometry(2.8, 8, 6), jointMat);
+    elbow.position.set(sx, 16, 0);
+    g.add(elbow);
 
-    // Forearm
-    const fa = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 0.8, 9, 6), dark);
-    fa.position.set(side * 11.5, 8.5, 0);
+    const fa = mkMesh(new THREE.BoxGeometry(4, 9, 4), darkMat);
+    fa.position.set(sx, 9.5, 0);
     g.add(fa);
 
-    // Fist
-    const fist = new THREE.Mesh(new THREE.BoxGeometry(3.5, 3.5, 3.5), dark);
-    fist.position.set(side * 11.5, 4, 0);
+    const fist = mkMesh(new THREE.BoxGeometry(5.5, 5.5, 7), bodyMat);
+    fist.position.set(sx, 4, 2.5);
     g.add(fist);
 
-    // Gun barrel on fist
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.45, 0.45, 3.5, 6),
-      new THREE.MeshLambertMaterial({ color: 0x0a0a14 })
-    );
+    // Barrel pointing toward player (+Z direction)
+    const barrel = mkMesh(new THREE.CylinderGeometry(0.65, 0.65, 6, 6), mkLambert(0x110e00));
     barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(side * 11.5, 4, -2.8);
+    barrel.position.set(sx, 4, 7.0);
     g.add(barrel);
+
+    const muzzle = mkMesh(new THREE.SphereGeometry(0.9, 7, 5), mkBasic(0xffdd00));
+    muzzle.position.set(sx, 4, 10.2);
+    g.add(muzzle);
+
+    const strip = mkMesh(new THREE.BoxGeometry(5.6, 0.8, 7.2), mkBasic(0xddcc00));
+    strip.position.set(sx, 7.1, 2.5);
+    g.add(strip);
 
     return g;
   }
 
   _buildParts(scene) {
-    const lPos = new THREE.Vector3(RX - 11.5, RY + 27, RZ);
-    const rPos = new THREE.Vector3(RX + 11.5, RY + 27, RZ);
-    this.leftShoulder  = new Boss3Part(scene, lPos, 60, 'shoulder', 2.8);
-    this.rightShoulder = new Boss3Part(scene, rPos, 60, 'shoulder', 2.8);
+    const lPos = new THREE.Vector3(RX - 12, RY + 27, RZ);
+    const rPos = new THREE.Vector3(RX + 12, RY + 27, RZ);
+    this.leftShoulder  = new Boss3Part(scene, lPos, 60, 'shoulder', 3.0);
+    this.rightShoulder = new Boss3Part(scene, rPos, 60, 'shoulder', 3.0);
     this.neck          = null;
     this.parts = [this.leftShoulder, this.rightShoulder];
   }
 
-  _buildPhase3HPBar() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 256; canvas.height = 22;
-    this._p3HpCtx = canvas.getContext('2d');
-    this._p3HpTex = new THREE.CanvasTexture(canvas);
-    this._p3HpMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(5.5, 0.46),
-      new THREE.MeshBasicMaterial({ map: this._p3HpTex, transparent: true, depthTest: false })
+  _buildP3Bar() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 22;
+    this._p3Ctx = c.getContext('2d');
+    this._p3Tex = new THREE.CanvasTexture(c);
+    this._p3Bar = mkMesh(
+      new THREE.PlaneGeometry(6, 0.52),
+      new THREE.MeshBasicMaterial({ map: this._p3Tex, transparent: true, depthTest: false })
     );
-    this._p3HpMesh.position.y = 3.8;
-    this._p3HpMesh.visible = false;
-    this.group.add(this._p3HpMesh);
-    this._redrawP3HP();
+    this._p3Bar.position.y = 4.2;
+    this._p3Bar.visible = false;
+    this.group.add(this._p3Bar);
+    this._redrawP3();
   }
 
-  _redrawP3HP() {
-    const ctx = this._p3HpCtx, W = 256, H = 22;
+  _redrawP3() {
+    const ctx = this._p3Ctx, W = 256, H = 22;
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#1a0010'; ctx.fillRect(0, 0, W, H);
-    const pct  = Math.max(0, this.hp / this.maxHp);
-    const grad = ctx.createLinearGradient(0, 0, (W - 4) * pct, 0);
-    grad.addColorStop(0, '#ff4422');
-    grad.addColorStop(1, '#880011');
-    ctx.fillStyle = grad;
-    ctx.fillRect(2, 2, (W - 4) * pct, H - 4);
-    ctx.strokeStyle = '#ff2200'; ctx.lineWidth = 1.5;
+    ctx.fillStyle = '#1a1100'; ctx.fillRect(0, 0, W, H);
+    const pct = Math.max(0, this.hp / this.maxHp);
+    const gr  = ctx.createLinearGradient(0, 0, (W - 4) * pct, 0);
+    gr.addColorStop(0, '#ffcc00'); gr.addColorStop(1, '#886600');
+    ctx.fillStyle = gr; ctx.fillRect(2, 2, (W - 4) * pct, H - 4);
+    ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 1.5;
     ctx.strokeRect(1, 1, W - 2, H - 2);
-    this._p3HpTex.needsUpdate = true;
+    this._p3Tex.needsUpdate = true;
   }
 
-  // Used by game.js desktop HP bar
+  // Desktop HP bar
   getHpFraction() {
     if (this.phase === 1) {
-      const hp  = (this.leftShoulder?.dead  ? 0 : (this.leftShoulder?.hp  ?? 0)) +
-                  (this.rightShoulder?.dead ? 0 : (this.rightShoulder?.hp ?? 0));
-      const max = (this.leftShoulder?.dead  ? 0 : (this.leftShoulder?.maxHp  ?? 0)) +
-                  (this.rightShoulder?.dead ? 0 : (this.rightShoulder?.maxHp ?? 0));
-      return max > 0 ? hp / max : 0;
+      const hp = (this.leftShoulder?.dead  ? 0 : (this.leftShoulder?.hp  ?? 0)) +
+                 (this.rightShoulder?.dead ? 0 : (this.rightShoulder?.hp ?? 0));
+      return hp / ((this.leftShoulder?.maxHp ?? 60) + (this.rightShoulder?.maxHp ?? 60));
     }
-    if (this.phase === 2) return (this.neck?.hp ?? 0) / (this.neck?.maxHp ?? 1);
-    return this.hp / this.maxHp;
+    if (this.phase === 2) return Math.max(0, (this.neck?.hp ?? 0) / (this.neck?.maxHp ?? 1));
+    return Math.max(0, this.hp / this.maxHp);
   }
 
   // ── Part destruction ─────────────────────────────────────────
+
   onPartDestroyed(part) {
-    if (part.kind === 'shoulder') this._onShoulderDestroyed(part);
-    else if (part.kind === 'neck') this._onNeckDestroyed();
+    if (part.kind === 'shoulder') this._onShoulderDown(part);
+    else if (part.kind === 'neck') this._onNeckDown();
   }
 
-  _onShoulderDestroyed(shoulder) {
+  _onShoulderDown(shoulder) {
     if (shoulder === this.leftShoulder) {
       this._canFireLeft = false;
       this._robotGroup.remove(this._leftArmGroup);
@@ -487,121 +514,127 @@ export class Boss3 {
 
   _enterPhase2() {
     this.phase = 2;
-    const neckPos = new THREE.Vector3(RX, RY + 29, RZ);
-    this.neck  = new Boss3Part(this._scene, neckPos, 80, 'neck', 2.2);
+    const neckPos = new THREE.Vector3(RX, RY + 37, RZ);
+    this.neck  = new Boss3Part(this._scene, neckPos, 80, 'neck', 2.5);
     this.parts = [this.neck];
-    // 3-rocket volleys from mouth, slightly slower rate
-    this._missileInterval = 4.0;
+    this._missileInterval = 3.8;
     this._missileTimer    = 2.0;
   }
 
-  _onNeckDestroyed() {
+  _onNeckDown() {
     this.phase = 3;
     this.parts = [];
 
-    // Detach head from robot and attach it to boss.group
+    // Re-parent head group from robotGroup to boss.group
     this._robotGroup.remove(this._headGroup);
     this.group.add(this._headGroup);
     this._headGroup.position.set(0, 0, 0);
 
-    // Place boss.group where the head was in world space
-    this.group.position.set(RX, RY + 33, RZ);
+    // boss.group world position = where the head was (robot z=-72, head local y=42)
+    this.group.position.set(RX, RY + 42, RZ);
 
-    // Hide robot body
+    // Robot body disappears
     this._scene.remove(this._robotGroup);
 
-    // Phase 3 movement setup
-    this._spots      = shuffle([...HEAD_SPOTS]);
-    this._spotIdx    = 0;
-    this._moveState  = 'hovering';
-    this._hoverTimer = 0;
-
-    // Two shield orbs orbiting the head
+    // Two shield orbs
     this.shields = [
       new ShieldOrb(this._scene, 0, 2),
       new ShieldOrb(this._scene, 1, 2),
     ];
 
-    this._p3HpMesh.visible = true;
-    this._missileInterval  = 2.5;
-    this._missileTimer     = 1.5;
+    // Reset hover-zip
+    this._spots      = shuffled(HEAD_SPOTS);
+    this._spotIdx    = 0;
+    this._moveState  = 'hovering';
+    this._hoverTimer = 0;
+
+    this._p3Bar.visible   = true;
+    this._missileInterval = 2.2;
+    this._missileTimer    = 1.5;
   }
 
-  // ── Hit (phase 3 head only when vulnerable) ──────────────────
+  // ── Hit (phase-3 only when vulnerable) ───────────────────────
+
   hit(damage = 1) {
     if (this.phase !== 3 || !this._vulnerable) return false;
     this.hp -= damage;
     this._hitFlash = 0.10;
-    this._redrawP3HP();
+    this._redrawP3();
     if (this.hp <= 0) { this.dead = true; return true; }
     return false;
   }
 
   // ── Main update ──────────────────────────────────────────────
+
   update(dt, playerPos, scene, camera) {
     if (this.dead) return [];
     this._animTimer += dt;
 
-    // Core glow (phases 1 & 2)
-    if (this._coreGlow && this.phase < 3) {
-      this._coreGlow.material.color.setHSL(0.0, 1.0, 0.42 + 0.12 * Math.sin(this._animTimer * 4));
-    }
-    // Eyes base animation (phases 1 & 2; phase 3 overrides below)
-    if (this.phase < 3) {
-      for (const eye of this._eyes) {
-        eye.material.color.setHSL(0.05, 1.0, 0.38 + 0.15 * Math.sin(this._animTimer * 3 + eye.position.x));
-      }
+    // Core pulse (phases 1&2)
+    if (this.phase < 3 && this._coreGlow) {
+      const s = 0.85 + 0.15 * Math.sin(this._animTimer * 5);
+      this._coreGlow.scale.setScalar(s);
+      this._coreGlow.material.color.setHSL(0.14, 1.0, 0.38 + 0.14 * Math.sin(this._animTimer * 4));
     }
 
-    // Update part spinning rings
     for (const p of this.parts) p.update(dt, camera);
 
     switch (this.phase) {
-      case 1: return this._updatePhase1(dt, playerPos, scene);
-      case 2: return this._updatePhase2(dt, playerPos, scene);
-      case 3: return this._updatePhase3(dt, playerPos, scene, camera);
+      case 1: return this._phase1(dt, playerPos, scene);
+      case 2: return this._phase2(dt, playerPos, scene);
+      case 3: return this._phase3(dt, playerPos, scene, camera);
     }
     return [];
   }
 
-  _updatePhase1(dt, playerPos, scene) {
+  // Phase 1 — alternating fist rockets ─────────────────────────
+
+  _phase1(dt, playerPos, scene) {
     const rockets = [];
     this._missileTimer -= dt;
     if (this._missileTimer <= 0) {
       this._missileTimer = this._missileInterval;
-      let pos = null;
+
+      let firePos = null;
       if (this._canFireLeft && this._canFireRight) {
-        pos = this._shotSide === 0 ? this._leftHandPos : this._rightHandPos;
+        firePos = this._shotSide === 0 ? this._leftHandPos : this._rightHandPos;
         this._shotSide ^= 1;
       } else if (this._canFireLeft) {
-        pos = this._leftHandPos;
+        firePos = this._leftHandPos;
       } else if (this._canFireRight) {
-        pos = this._rightHandPos;
+        firePos = this._rightHandPos;
       }
-      if (pos) rockets.push(new Boss3Rocket(pos.clone(), playerPos.clone(), scene));
+
+      if (firePos) {
+        rockets.push(new Boss3Rocket(firePos.clone(), playerPos.clone(), scene));
+      }
     }
     return rockets;
   }
 
-  _updatePhase2(dt, playerPos, scene) {
+  // Phase 2 — 3-rocket spread from mouth ───────────────────────
+
+  _phase2(dt, playerPos, scene) {
     const rockets = [];
     this._missileTimer -= dt;
     if (this._missileTimer <= 0) {
       this._missileTimer = this._missileInterval;
-      // 3-rocket spread from mouth
       for (let i = -1; i <= 1; i++) {
-        const target = playerPos.clone().add(new THREE.Vector3(i * 3, 0, 0));
+        const target = playerPos.clone().add(new THREE.Vector3(i * 3.5, 0, 0));
         rockets.push(new Boss3Rocket(this._mouthPos.clone(), target, scene));
       }
     }
     return rockets;
   }
 
-  _updatePhase3(dt, playerPos, scene, camera) {
+  // Phase 3 — floating head, zip movement, shields ─────────────
+
+  _phase3(dt, playerPos, scene, camera) {
     const rockets = [];
 
-    // ── Hover-and-zip movement ───────────────────────────────
+    // Hover-and-zip
     if (this._moveState === 'hovering') {
+      this.group.position.y += Math.sin(this._animTimer * 1.8) * 0.008;
       this._hoverTimer += dt;
       if (this._hoverTimer >= this._hoverDur) {
         this._hoverTimer = 0;
@@ -611,9 +644,10 @@ export class Boss3 {
       }
     } else {
       const toTarget = new THREE.Vector3().subVectors(this._zipTarget, this.group.position);
-      const dist = toTarget.length();
-      if (dist < 0.5) {
-        this._moveState = 'hovering'; this._hoverTimer = 0;
+      const dist     = toTarget.length();
+      if (dist < 0.6) {
+        this._moveState  = 'hovering';
+        this._hoverTimer = 0;
         this.group.position.copy(this._zipTarget);
       } else {
         this.group.position.addScaledVector(toTarget.normalize(), Math.min(this._zipSpeed * dt, dist));
@@ -621,54 +655,55 @@ export class Boss3 {
     }
 
     // Face player
-    const toPlayer = new THREE.Vector3().subVectors(playerPos, this.group.position);
-    this.group.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
+    const toP = new THREE.Vector3()
+      .subVectors(playerPos, this.group.position)
+      .setY(0).normalize();
+    this.group.rotation.y = Math.atan2(toP.x, toP.z);
 
-    // ── Shields ──────────────────────────────────────────────
-    const allShieldsDown = this.shields.every(s => s.dead);
+    // Shields
+    const allDead = this.shields.every(s => s.dead);
     if (this._vulnerable) {
       this._vulnerableTimer -= dt;
       if (this._vulnerableTimer <= 0) {
         this._vulnerable = false;
         for (const s of this.shields) s.revive();
       }
-    } else if (allShieldsDown) {
+    } else if (allDead) {
       this._vulnerable      = true;
       this._vulnerableTimer = this._vulnerableDur;
     }
     for (const s of this.shields) s.update(dt, this.group.position, camera);
+    this._shieldDome.visible = !allDead && !this._vulnerable;
 
-    // Shield dome on head
-    this._shieldDome.visible = !allShieldsDown && !this._vulnerable;
-
-    // ── Eye animation ────────────────────────────────────────
+    // Eye animation
     if (this._hitFlash > 0) {
       this._hitFlash -= dt;
-      for (const eye of this._eyes) eye.material.color.setHex(0xffffff);
+      for (const e of this._eyes) e.material.color.setHex(0xffffff);
     } else if (this._vulnerable) {
       const p = 0.5 + 0.5 * Math.sin(this._animTimer * 9);
-      for (const eye of this._eyes) eye.material.color.setHSL(0.08, 1.0, 0.5 + p * 0.25);
+      for (const e of this._eyes) e.material.color.setHSL(0.08, 1.0, 0.5 + p * 0.3);
     } else {
-      for (const eye of this._eyes) eye.material.color.setHex(0xff5500);
+      for (const e of this._eyes) e.material.color.setHex(0xff8800);
     }
 
-    // ── Missiles (only while hovering) ───────────────────────
+    // Mouth rocket — only while hovering
     if (this._moveState === 'hovering') {
       this._missileTimer -= dt;
       if (this._missileTimer <= 0) {
         this._missileTimer = this._missileInterval;
-        const toP2D = new THREE.Vector3(
-          playerPos.x - this.group.position.x, 0,
-          playerPos.z - this.group.position.z
-        ).normalize();
-        const mouthWorld = this.group.position.clone()
-          .addScaledVector(toP2D, 4.0)
-          .add(new THREE.Vector3(0, -1.5, 0));
-        rockets.push(new Boss3Rocket(mouthWorld, playerPos.clone(), scene));
+        const forward  = new THREE.Vector3(0, 0, 1).applyEuler(this.group.rotation);
+        const spawnPos = this.group.position.clone()
+          .addScaledVector(forward, 5.5)
+          .add(new THREE.Vector3(0, -1.8, 0));
+        rockets.push(new Boss3Rocket(spawnPos, playerPos.clone(), scene));
       }
     }
 
-    if (camera) this._p3HpMesh.lookAt(camera.getWorldPosition(new THREE.Vector3()));
+    if (camera) {
+      const p = new THREE.Vector3();
+      camera.getWorldPosition(p);
+      this._p3Bar.lookAt(p);
+    }
     return rockets;
   }
 

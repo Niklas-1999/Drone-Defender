@@ -494,16 +494,16 @@ export class Boss2 {
 
     this._phase           = 1;
     this._vulnerable      = false;
-    this._vulnerableTimer = 0;
-    this._vulnerableDur   = 8.0;
     this._hitFlash        = 0;
     this._animTimer       = 0;
 
     this._missileInterval = 4.9; // seconds between missiles (phase 1, -40% rate)
     this._missileTimer    = 2.5; // initial delay before first shot
 
+    // Shields: 2 in phase 1, 3 in phase 2, 4 in phase 3.
+    // Once destroyed within a phase they stay gone until the next phase spawns fresh ones.
     this.shields = [];
-    for (let i = 0; i < 3; i++) this.shields.push(new ShieldOrb(scene, i, 3));
+    for (let i = 0; i < 2; i++) this.shields.push(new ShieldOrb(scene, i, 2));
 
     this.group = new THREE.Group();
     this._buildMesh();
@@ -600,16 +600,23 @@ export class Boss2 {
     if (this.hp <= 80 && this._phase < 3) {
       this._phase           = 3;
       this._orbitSpeed      = 0.285;
-      this._vulnerableDur   = 4.0;
       this._missileInterval = 2.0;
       if (this._missileTimer > this._missileInterval) this._missileTimer = this._missileInterval;
+      this._startShieldPhase(4);
     } else if (this.hp <= 160 && this._phase < 2) {
       this._phase           = 2;
       this._orbitSpeed      = 0.185;
       this._missileInterval = 3.1;
       if (this._missileTimer > this._missileInterval) this._missileTimer = this._missileInterval;
-      this._vulnerableDur = 6.0;
+      this._startShieldPhase(3);
     }
+  }
+
+  _startShieldPhase(count) {
+    for (const s of this.shields) s.destroy();
+    this.shields = [];
+    for (let i = 0; i < count; i++) this.shields.push(new ShieldOrb(this._scene, i, count));
+    this._vulnerable = false;
   }
 
   hit(damage = 1) {
@@ -663,21 +670,12 @@ export class Boss2 {
       eye.material.color.setRGB(1, 0.1 + 0.3 * Math.sin(this._animTimer * 4 + eye.position.x), 1);
     }
 
-    // ── Vulnerability window ──────────────────────────────────
+    // ── Vulnerability — permanent within each phase once all shields are gone ──
     const allShieldsDown = this.shields.every(s => s.dead);
-    if (this._vulnerable) {
-      this._vulnerableTimer -= dt;
-      if (this._vulnerableTimer <= 0) {
-        this._vulnerable = false;
-        for (const s of this.shields) s.revive();
-      }
-    } else if (allShieldsDown) {
-      this._vulnerable      = true;
-      this._vulnerableTimer = this._vulnerableDur;
-    }
+    if (!this._vulnerable && allShieldsDown) this._vulnerable = true;
 
-    // Shield dome visible while boss is protected (shields alive + not in open window)
-    this._shieldDome.visible = !allShieldsDown && !this._vulnerable;
+    // Dome shown while at least one shield is still alive
+    this._shieldDome.visible = !allShieldsDown;
 
     // ── Shield orbit update ───────────────────────────────────
     for (const shield of this.shields) {
