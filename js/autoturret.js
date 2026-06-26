@@ -108,6 +108,11 @@ export class AutoTurret {
     );
     this._flash.position.z = -0.53;
     this._pivot.add(this._flash);
+
+    // Night/evening illumination light (matches main turret warm white)
+    this._light = new THREE.PointLight(0xffeedd, 0, 5);
+    this._light.position.y = 0.5;
+    this._group.add(this._light);
   }
 
   // Returns true if a shot was fired this frame (caller adds projectile)
@@ -157,6 +162,8 @@ export class AutoTurret {
   }
 
   setFireCooldown(val) { this._fireCooldownMax = val; }
+
+  setLightIntensity(v) { this._light.intensity = v; }
 
   _nearest(drones) {
     let best = null, bestD = Infinity;

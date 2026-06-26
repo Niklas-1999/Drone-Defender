@@ -11,7 +11,7 @@ import { WaveManager }       from './waves.js';
 import { EMP }               from './emp.js';
 import { AutoTurret }        from './autoturret.js';
 import { ShopSystem }        from './shop.js';
-import { Boss, Missile }     from './boss.js';
+import { Boss, Missile, Boss2, ShieldOrb } from './boss.js';
 
 // Money awarded per drone kill by type
 const KILL_MONEY = { scout: 10, warrior: 20, titan: 30 };
@@ -455,7 +455,7 @@ export class Game {
 
     this._currentPeriod    = 'day';
     this._skyTransitioning = false;
-    this._turretLight.intensity = 0;
+    this._setLightBlend(0);
     this.audio.stopRain();
     this.sceneBuilder.resetToDay();
     this.sceneBuilder.setLightningCallback(() => this.audio.thunder());
@@ -545,8 +545,8 @@ export class Game {
     if (this._isBossWave(this.wave)) {
       // Clear any stale wave state so isComplete() stays true (no drone spawns)
       this.waves.startBossWave(); // sets config=[] → completes instantly
-      // Spawn the actual boss
-      this._boss         = new Boss(this.scene);
+      // Spawn the correct boss by wave number
+      this._boss = this.wave === 12 ? new Boss2(this.scene) : new Boss(this.scene);
       this._bossMissiles = [];
       // Show desktop HP bar
       const bar = document.getElementById('boss-hp-bar');
@@ -700,7 +700,7 @@ export class Game {
       this._updateMusic(dt);
       this.sceneBuilder.update(dt); // always update (rain + sky transition)
       if (this._skyTransitioning) {
-        this._turretLight.intensity = this.sceneBuilder.currentBlend * 1.5;
+        this._setLightBlend(this.sceneBuilder.currentBlend * 1.5);
       } else {
         this._update(dt, frame);
       }
@@ -737,7 +737,7 @@ export class Game {
   // ── Game update (playing state) ───────────────────────────────
   _update(dt, frame) {
     // Drive turret / drone glow from blend every frame (covers evening + night)
-    this._turretLight.intensity = this.sceneBuilder.currentBlend * 1.5;
+    this._setLightBlend(this.sceneBuilder.currentBlend * 1.5);
 
     // ── EMP ───────────────────────────────────────────────────
     this.emp.update(dt);
@@ -754,6 +754,7 @@ export class Game {
       ...this.drones,
       ...(this._boss && !this._boss.dead ? [this._boss] : []),
       ...this._bossMissiles,
+      ...(this._boss?.shields?.filter(s => !s.dead) ?? []),
     ]));
 
     // ── Full-auto shooting ────────────────────────────────────
@@ -841,6 +842,7 @@ export class Game {
     const extras = [
       ...(this._boss && !this._boss.dead ? [this._boss] : []),
       ...this._bossMissiles,
+      ...(this._boss?.shields?.filter(s => !s.dead) ?? []),
     ];
     const { hitDrones, hitExtras, playerDamage } =
       this.projectiles.update(dt, this.drones, playerPos, extras);
@@ -860,10 +862,15 @@ export class Game {
 
     for (const target of hitExtras) {
       this.audio.hit();
-      if (target === this._boss) {
+      if (target.kind === 'boss') {
         if (this._boss.hit(1)) { this._bossKilled(); return; }
-      } else {
-        // Missile shot down by player
+      } else if (target.kind === 'shield') {
+        if (target.hit(1)) {
+          this.score += 50;
+          this.particles.emit(target.group.position.clone(), 'spark', 4, 6);
+          this.audio.explosion(0.3);
+        }
+      } else if (target.kind === 'missile') {
         if (target.hit(1)) {
           this.score += 100;
           this.money  += 5;
@@ -929,6 +936,12 @@ export class Game {
     this.cameraRig.position.x += (Math.random() - 0.5) * 0.10;
     this.cameraRig.position.z += (Math.random() - 0.5) * 0.05;
     setTimeout(() => this.cameraRig.position.copy(orig), 160);
+  }
+
+  // Sets main turret light + all auto turret lights to the same intensity.
+  _setLightBlend(v) {
+    this._turretLight.intensity = v;
+    for (const at of Object.values(this._autoTurrets)) at?.setLightIntensity(v);
   }
 
   // ── Boss HP bar (desktop HUD) ─────────────────────────────────
@@ -1131,7 +1144,7 @@ export class Game {
     this.audio.stopRain();
     this.sceneBuilder.snapToPeriod(period);
     this.sceneBuilder.setLightningCallback(() => this.audio.thunder());
-    this._turretLight.intensity = this.sceneBuilder.currentBlend * 1.5;
+    this._setLightBlend(this.sceneBuilder.currentBlend * 1.5);
     if (period === 'night') this.audio.startRain();
 
     // Music for this period

@@ -18,6 +18,7 @@ export class Missile {
     this.hp     = 10;
     this.maxHp  = 10;
     this.dead   = false;
+    this.kind   = 'missile';
     this.damage = 25;
     this._scene = scene;
     this.speed  = 7;         // m/s — slow enough to shoot down
@@ -130,6 +131,7 @@ export class Boss {
     this.hp     = 300;
     this.maxHp  = 300;
     this.dead   = false;
+    this.kind   = 'boss';
     this.points = 5000;
     this._scene = scene;
     this.spec   = { size: 2.55 }; // 3× titan (0.85) — CCD hitbox
@@ -363,6 +365,307 @@ export class Boss {
 
   destroy() {
     this.dead = true;
+    this._scene.remove(this.group);
+  }
+}
+
+// ── ShieldOrb (Boss 2) ─────────────────────────────────────────
+export class ShieldOrb {
+  constructor(scene, orbitIndex, numOrbs) {
+    this.hp     = 10;
+    this.maxHp  = 10;
+    this.dead   = false;
+    this.kind   = 'shield';
+    this._scene = scene;
+    this.spec   = { size: 0.35 };
+    this._orbitAngle  = (orbitIndex / numOrbs) * Math.PI * 2;
+    this._orbitRadius = 3.5;
+    this._orbitSpeed  = 1.1;
+    this._hitFlash    = 0;
+
+    this.group = new THREE.Group();
+    this._buildMesh();
+    scene.add(this.group);
+  }
+
+  _buildMesh() {
+    this._shellMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.28, 12, 8),
+      new THREE.MeshLambertMaterial({ color: 0x882299 })
+    );
+    this.group.add(this._shellMesh);
+
+    this._coreMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.15, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xdd55ff, transparent: true, opacity: 0.85 })
+    );
+    this.group.add(this._coreMesh);
+
+    this._ringMesh = new THREE.Mesh(
+      new THREE.TorusGeometry(0.36, 0.035, 6, 20),
+      new THREE.MeshBasicMaterial({ color: 0xbb44ee })
+    );
+    this.group.add(this._ringMesh);
+
+    const hpCanvas = document.createElement('canvas');
+    hpCanvas.width = 32; hpCanvas.height = 4;
+    this._hpCtx = hpCanvas.getContext('2d');
+    this._hpTex = new THREE.CanvasTexture(hpCanvas);
+    this._hpMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.45, 0.055),
+      new THREE.MeshBasicMaterial({ map: this._hpTex, transparent: true, depthTest: false })
+    );
+    this._hpMesh.position.y = 0.44;
+    this.group.add(this._hpMesh);
+    this._redrawHP();
+  }
+
+  _redrawHP() {
+    const ctx = this._hpCtx;
+    ctx.clearRect(0, 0, 32, 4);
+    ctx.fillStyle = '#330044'; ctx.fillRect(0, 0, 32, 4);
+    ctx.fillStyle = '#cc44ff';
+    ctx.fillRect(0, 0, 32 * Math.max(0, this.hp / this.maxHp), 4);
+    this._hpTex.needsUpdate = true;
+  }
+
+  hit(damage = 1) {
+    if (this.dead) return false;
+    this.hp -= damage;
+    this._hitFlash = 0.07;
+    this._redrawHP();
+    if (this.hp <= 0) {
+      this.dead = true;
+      this.group.visible = false;
+      return true;
+    }
+    return false;
+  }
+
+  revive() {
+    this.hp   = this.maxHp;
+    this.dead = false;
+    this.group.visible = true;
+    this._redrawHP();
+  }
+
+  update(dt, bossPos, camera) {
+    if (this.dead) return;
+    this._hitFlash = Math.max(0, this._hitFlash - dt);
+    this._orbitAngle += this._orbitSpeed * dt;
+
+    const r  = this._orbitRadius;
+    this.group.position.set(
+      bossPos.x + Math.cos(this._orbitAngle) * r,
+      bossPos.y + Math.sin(this._orbitAngle * 0.6) * 1.4,
+      bossPos.z + Math.sin(this._orbitAngle) * r
+    );
+
+    this._ringMesh.rotation.y += dt * 2.5;
+    this._ringMesh.rotation.x += dt * 1.3;
+    this._shellMesh.material.color.setHex(this._hitFlash > 0 ? 0xffffff : 0x882299);
+
+    if (camera) this._hpMesh.lookAt(camera.getWorldPosition(new THREE.Vector3()));
+  }
+
+  destroy() {
+    this.dead = true;
+    this._scene.remove(this.group);
+  }
+}
+
+// ── Boss 2 ─────────────────────────────────────────────────────
+export class Boss2 {
+  constructor(scene) {
+    this.hp     = 300;
+    this.maxHp  = 300;
+    this.dead   = false;
+    this.kind   = 'boss';
+    this.points = 8000;
+    this._scene = scene;
+    this.spec   = { size: 2.55 };
+
+    this._orbitAngle   = Math.random() * Math.PI * 2;
+    this._orbitRadius  = 35;
+    this._orbitSpeed   = 0.23; // rad/s — ~8 m/s
+    this._orbitHeight  = 12;
+
+    this._phase           = 1;
+    this._vulnerable      = false;
+    this._vulnerableTimer = 0;
+    this._vulnerableDur   = 8.0;
+    this._hitFlash        = 0;
+    this._animTimer       = 0;
+
+    this.shields = [];
+    for (let i = 0; i < 3; i++) this.shields.push(new ShieldOrb(scene, i, 3));
+
+    this.group = new THREE.Group();
+    this._buildMesh();
+    this.group.position.set(
+      Math.sin(this._orbitAngle) * this._orbitRadius,
+      this._orbitHeight,
+      -Math.cos(this._orbitAngle) * this._orbitRadius
+    );
+    scene.add(this.group);
+  }
+
+  _buildMesh() {
+    const S = 2.55;
+
+    // Angular icosahedron — distinct from Boss 1's octahedron
+    this._bodyMesh = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(S * 0.5, 1),
+      new THREE.MeshLambertMaterial({ color: 0x9933cc })
+    );
+    this.group.add(this._bodyMesh);
+
+    this._coreMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(S * 0.20, 14, 10),
+      new THREE.MeshBasicMaterial({ color: 0xdd55ff, transparent: true, opacity: 0.80 })
+    );
+    this.group.add(this._coreMesh);
+
+    // 6 spike cones pointing along ±X ±Y ±Z
+    const spikeMat = new THREE.MeshLambertMaterial({ color: 0x661199 });
+    for (const [dx, dy, dz] of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.16, S * 0.55, 5), spikeMat);
+      const dir = new THREE.Vector3(dx, dy, dz);
+      spike.position.copy(dir.clone().multiplyScalar(S * 0.52));
+      spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      this.group.add(spike);
+    }
+
+    // 3 glowing eyes at +Z face in a triangle
+    this._eyes = [];
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const eye = new THREE.Mesh(
+        new THREE.SphereGeometry(S * 0.07, 6, 4),
+        new THREE.MeshBasicMaterial({ color: 0xff00ff })
+      );
+      eye.position.set(Math.cos(a) * S * 0.24, Math.sin(a) * S * 0.24, S * 0.47);
+      this.group.add(eye);
+      this._eyes.push(eye);
+    }
+
+    // HP bar
+    const hpCanvas = document.createElement('canvas');
+    hpCanvas.width = 256; hpCanvas.height = 22;
+    this._hpCtx = hpCanvas.getContext('2d');
+    this._hpTex = new THREE.CanvasTexture(hpCanvas);
+    this._hpMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(5.0, 0.44),
+      new THREE.MeshBasicMaterial({ map: this._hpTex, transparent: true, depthTest: false })
+    );
+    this._hpMesh.position.y = S * 0.77;
+    this.group.add(this._hpMesh);
+    this._redrawHPBar();
+  }
+
+  _redrawHPBar() {
+    const ctx = this._hpCtx;
+    const W = 256, H = 22;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#1a0028'; ctx.fillRect(0, 0, W, H);
+    const pct  = Math.max(0, this.hp / this.maxHp);
+    const grad = ctx.createLinearGradient(0, 0, (W - 4) * pct, 0);
+    grad.addColorStop(0, '#cc44ff');
+    grad.addColorStop(1, '#770099');
+    ctx.fillStyle = grad;
+    ctx.fillRect(2, 2, (W - 4) * pct, H - 4);
+    ctx.strokeStyle = '#9933cc'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(1, 1, W - 2, H - 2);
+    this._hpTex.needsUpdate = true;
+  }
+
+  _updatePhase() {
+    if (this.hp <= 100 && this._phase < 3) {
+      this._phase         = 3;
+      this._orbitSpeed    = 0.57; // ~20 m/s
+      this._vulnerableDur = 4.0;
+    } else if (this.hp <= 200 && this._phase < 2) {
+      this._phase         = 2;
+      this._orbitSpeed    = 0.37; // ~13 m/s
+      this._vulnerableDur = 6.0;
+    }
+  }
+
+  hit(damage = 1) {
+    if (this.dead) return false;
+    if (!this._vulnerable) return false;
+    this.hp -= damage;
+    this._hitFlash = 0.10;
+    this._redrawHPBar();
+    if (this.hp <= 0) { this.dead = true; return true; }
+    return false;
+  }
+
+  update(dt, targetPos, scene, camera) {
+    if (this.dead) return [];
+    this._animTimer += dt;
+    this._updatePhase();
+
+    // Continuous orbit around player
+    this._orbitAngle += this._orbitSpeed * dt;
+    this.group.position.set(
+      Math.sin(this._orbitAngle) * this._orbitRadius,
+      this._orbitHeight + Math.sin(this._orbitAngle * 1.5) * 2.5,
+      -Math.cos(this._orbitAngle) * this._orbitRadius
+    );
+
+    // Eye cluster (+Z) always faces toward player at origin
+    const toPlayer = new THREE.Vector3(
+      -this.group.position.x, 0, -this.group.position.z
+    ).normalize();
+    this.group.rotation.set(0, Math.atan2(toPlayer.x, toPlayer.z), 0);
+
+    // Body slowly self-rotates for visual interest
+    this._bodyMesh.rotation.y += dt * 0.5;
+    this._bodyMesh.rotation.z += dt * 0.3;
+
+    // ── Visuals ───────────────────────────────────────────────
+    if (this._hitFlash > 0) {
+      this._hitFlash -= dt;
+      this._bodyMesh.material.color.setHex(0xffffff);
+    } else if (this._vulnerable) {
+      // Bright rapid pulse — signals to player the window is open
+      const p = 0.5 + 0.5 * Math.sin(this._animTimer * 9);
+      this._bodyMesh.material.color.setHSL(0.78, 1.0, 0.50 + p * 0.22);
+    } else {
+      this._bodyMesh.material.color.setHex(0x9933cc);
+    }
+
+    this._coreMesh.material.opacity = 0.55 + 0.25 * Math.sin(this._animTimer * 3.5);
+    for (const eye of this._eyes) {
+      eye.material.color.setRGB(1, 0.1 + 0.3 * Math.sin(this._animTimer * 4 + eye.position.x), 1);
+    }
+
+    // ── Vulnerability window ──────────────────────────────────
+    const allShieldsDown = this.shields.every(s => s.dead);
+    if (this._vulnerable) {
+      this._vulnerableTimer -= dt;
+      if (this._vulnerableTimer <= 0) {
+        this._vulnerable = false;
+        for (const s of this.shields) s.revive();
+      }
+    } else if (allShieldsDown) {
+      this._vulnerable      = true;
+      this._vulnerableTimer = this._vulnerableDur;
+    }
+
+    // ── Shield orbit update ───────────────────────────────────
+    for (const shield of this.shields) {
+      shield.update(dt, this.group.position, camera);
+    }
+
+    if (camera) this._hpMesh.lookAt(camera.getWorldPosition(new THREE.Vector3()));
+    return [];
+  }
+
+  destroy() {
+    this.dead = true;
+    for (const s of this.shields) s.destroy();
     this._scene.remove(this.group);
   }
 }
