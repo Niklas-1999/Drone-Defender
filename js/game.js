@@ -625,6 +625,22 @@ export class Game {
 
     this.input.update(dt, frame, this.vrMode);
 
+    // VR: hold both grips for 1s to toggle the cheat panel
+    if (this.vrMode && this._cheatVRMesh) {
+      if (this.input.areBothGripping()) {
+        this._cheatGripTimer += dt;
+        if (this._cheatGripTimer >= 1.0) {
+          this._cheatGripTimer = -10; // debounce: must release before re-triggering
+          const vis = !this._cheatVRMesh.visible;
+          this._cheatVRMesh.visible = vis;
+          if (vis) this._positionCheatVRPanel();
+        }
+      } else {
+        this._cheatGripTimer = 0; // always reset when grips released
+      }
+      if (this._cheatVRMesh.visible) this._updateCheatVRPanel();
+    }
+
     if (this.state === 'menu' || this.state === 'gameover') {
       if (this.vrMode) {
         const h = this._getPanelBtnHover();
@@ -936,6 +952,8 @@ export class Game {
         this._cheatPanel.style.display = vis ? 'none' : 'block';
       }
     });
+
+    this._buildCheatVRPanel();
   }
 
   _cheatStartWave(targetWave) {
@@ -983,6 +1001,167 @@ export class Game {
     this._startMusic();
 
     this._startNextWave(); // wave becomes targetWave; period matches so no sky transition fires
+  }
+
+  // ── VR cheat panel (3-D canvas mesh, raycasted like the shop) ─
+  _buildCheatVRPanel() {
+    const CW = 900, CH = 600;
+    const canvas = document.createElement('canvas');
+    canvas.width = CW; canvas.height = CH;
+    this._cheatVRCtx = canvas.getContext('2d');
+    this._cheatVRTex = new THREE.CanvasTexture(canvas);
+
+    this._cheatVRMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.0, 2.0),
+      new THREE.MeshBasicMaterial({
+        map: this._cheatVRTex, transparent: true,
+        side: THREE.DoubleSide, depthTest: false,
+      })
+    );
+    this._cheatVRMesh.visible = false;
+    this.scene.add(this._cheatVRMesh);
+
+    this._cheatVRBtnZones = [];
+    this._cheatVRHover    = null;
+    this._cheatGripTimer  = 0;
+
+    this._drawCheatVRPanel();
+  }
+
+  _drawCheatVRPanel(hover = null) {
+    const ctx = this._cheatVRCtx;
+    const CW = 900, CH = 600;
+    ctx.clearRect(0, 0, CW, CH);
+
+    // Background + border
+    ctx.fillStyle = 'rgba(0,5,15,0.97)';
+    ctx.beginPath(); ctx.roundRect(4, 4, CW-8, CH-8, 16); ctx.fill();
+    ctx.strokeStyle = '#00aaff'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.roundRect(4, 4, CW-8, CH-8, 16); ctx.stroke();
+
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#00ddff'; ctx.font = 'bold 26px monospace';
+    ctx.fillText('⚠  CHEAT MENU  ⚠', CW/2, 36);
+    ctx.fillStyle = '#334466'; ctx.font = '12px monospace';
+    ctx.fillText('Hold BOTH GRIPS 1 second to open / close', CW/2, 60);
+
+    this._cheatVRBtnZones = [];
+
+    const sections = [
+      { label:'DAY',     color:'#87ceeb', y: 88, waves:[['W1',1],['W2',2],['W3',3],['W4',4],['W5',5],['BOSS 1',6]] },
+      { label:'EVENING', color:'#f07030', y:168, waves:[['W6',7],['W7',8],['W8',9],['W9',10],['W10',11],['BOSS 2',12]] },
+      { label:'NIGHT',   color:'#44aaff', y:248, waves:[['W11',13],['W12',14],['W13',15],['W14',16],['W15',17],['BOSS 3',18]] },
+    ];
+
+    const LX=18, LW=78, BTN_W=118, BTN_H=58, GAP=6;
+    const BTN_START = LX + LW + 8;
+
+    for (const { label, color, y, waves } of sections) {
+      ctx.fillStyle = color; ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, LX + LW, y + BTN_H/2);
+
+      waves.forEach(([wLabel, wNum], i) => {
+        const boss = wLabel.startsWith('BOSS');
+        const bx   = BTN_START + i * (BTN_W + GAP);
+        const hov  = hover === `w${wNum}`;
+        ctx.fillStyle   = hov ? (boss ? '#5a3000' : '#003060') : (boss ? '#2a1800' : '#001525');
+        ctx.strokeStyle = boss ? '#cc8800' : '#005588';
+        ctx.lineWidth   = 1.5;
+        ctx.textAlign   = 'center'; ctx.textBaseline = 'middle';
+        ctx.beginPath(); ctx.roundRect(bx, y, BTN_W, BTN_H, 6); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = boss ? '#ffaa00' : '#88ccff';
+        ctx.font      = `${boss ? 'bold ' : ''}14px monospace`;
+        ctx.fillText(wLabel, bx + BTN_W/2, y + BTN_H/2);
+        this._cheatVRBtnZones.push({ id:`w${wNum}`, wNum, x:bx, y, w:BTN_W, h:BTN_H });
+      });
+    }
+
+    // Utility row
+    const UY=340, UH=58, MARGIN=10;
+    const utils = [
+      { id:'all',   label:'★ All Upgrades + $9999', tc:'#00ff88', bc:'#00aa55', bw:330 },
+      { id:'money', label:'+$9999',                 tc:'#ffd700', bc:'#aa8800', bw:148 },
+      { id:'hp',    label:'Full HP',                tc:'#ff6688', bc:'#aa0044', bw:148 },
+      { id:'close', label:'✕ Close',                tc:'#ff4466', bc:'#440022', bw:120 },
+    ];
+    let ux = MARGIN;
+    for (const u of utils) {
+      const hov = hover === u.id;
+      ctx.fillStyle   = hov ? '#ffffff22' : '#00000088';
+      ctx.strokeStyle = u.bc; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(ux, UY, u.bw, UH, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle   = u.tc; ctx.font = 'bold 13px monospace';
+      ctx.textAlign   = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(u.label, ux + u.bw/2, UY + UH/2);
+      this._cheatVRBtnZones.push({ id:u.id, x:ux, y:UY, w:u.bw, h:UH });
+      ux += u.bw + GAP;
+    }
+
+    // Hint at bottom
+    ctx.fillStyle = '#223344'; ctx.font = '12px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('Aim controller ray at a button  ·  Trigger to select', CW/2, 430);
+
+    this._cheatVRTex.needsUpdate = true;
+  }
+
+  _positionCheatVRPanel() {
+    const camPos = new THREE.Vector3();
+    const camDir = new THREE.Vector3(0, 0, -1);
+    this.camera.getWorldPosition(camPos);
+    camDir.applyQuaternion(this.camera.quaternion);
+    camDir.y = 0; camDir.normalize();
+    this._cheatVRMesh.position.copy(camPos).addScaledVector(camDir, 2.5);
+    this._cheatVRMesh.position.y = camPos.y + 0.1;
+    this._cheatVRMesh.lookAt(camPos);
+  }
+
+  _updateCheatVRPanel() {
+    const rc = new THREE.Raycaster();
+    const q  = new THREE.Quaternion();
+    let newHover = null;
+    const trigger = this.input.consumeTriggerJustPressed();
+
+    for (const ctrl of [this.input.getRightController(), this.input.getLeftController()]) {
+      if (!ctrl || newHover !== null) continue;
+      const pos = new THREE.Vector3();
+      ctrl.getWorldPosition(pos);
+      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(ctrl.getWorldQuaternion(q));
+      rc.set(pos, dir.normalize());
+      const hits = rc.intersectObject(this._cheatVRMesh);
+      if (!hits.length || !hits[0].uv) continue;
+      const cx = hits[0].uv.x * 900;
+      const cy = (1 - hits[0].uv.y) * 600;
+      for (const zone of this._cheatVRBtnZones) {
+        if (cx >= zone.x && cx <= zone.x + zone.w && cy >= zone.y && cy <= zone.y + zone.h) {
+          newHover = zone.id;
+          if (trigger) this._cheatVRAction(zone);
+          break;
+        }
+      }
+    }
+
+    if (newHover !== this._cheatVRHover) {
+      this._cheatVRHover = newHover;
+      this._drawCheatVRPanel(newHover);
+    }
+  }
+
+  _cheatVRAction(zone) {
+    if (zone.wNum !== undefined) {
+      this._cheatVRMesh.visible = false;
+      this._cheatStartWave(zone.wNum);
+    } else if (zone.id === 'all') {
+      if (this.state === 'menu') this._cheatStartWave(1);
+      this._cheatAllUpgrades();
+    } else if (zone.id === 'money') {
+      if (this.state === 'menu') this._cheatStartWave(1);
+      this.money += 9999;
+    } else if (zone.id === 'hp') {
+      this.playerHP = 100;
+    } else if (zone.id === 'close') {
+      this._cheatVRMesh.visible = false;
+    }
   }
 
   _cheatAllUpgrades() {
