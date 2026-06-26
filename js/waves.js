@@ -4,7 +4,7 @@ import { Drone } from './drone.js';
 const HALF_ARC = 52 * (Math.PI / 180); // 20 % narrower than original 65°
 
 function buildBossWaveConfig() {
-  return [{ type: 'scout', delay: 0 }]; // placeholder: 1 scout
+  return []; // boss waves use the Boss class — no regular drones
 }
 
 function buildWaveConfig(waveNumber) {

@@ -103,9 +103,11 @@ export class ProjectileManager {
     ));
   }
 
-  // Returns { hitDrones: Set<Drone>, playerDamage: number }
-  update(dt, drones, playerWorldPos) {
+  // Returns { hitDrones: Set<Drone>, hitExtras: Set, playerDamage: number }
+  // extras = boss and/or missiles (same interface: group.position, spec.size, dead)
+  update(dt, drones, playerWorldPos, extras = []) {
     const hitDrones   = new Set();
+    const hitExtras   = new Set();
     let   playerDamage = 0;
 
     // ── Player bullets ────────────────────────────────────────
@@ -120,6 +122,8 @@ export class ProjectileManager {
       }
 
       let hit = false;
+
+      // Check regular drones first
       for (const d of drones) {
         if (d.dead) continue;
         const dp = d.group.position;
@@ -134,6 +138,25 @@ export class ProjectileManager {
           break;
         }
       }
+
+      // Check extras (boss, missiles) if no drone was hit
+      if (!hit) {
+        for (const e of extras) {
+          if (e.dead) continue;
+          const ep = e.group.position;
+          const dist = segPointDist(
+            b._prevPos.x, b._prevPos.y, b._prevPos.z,
+            b.mesh.position.x, b.mesh.position.y, b.mesh.position.z,
+            ep.x, ep.y, ep.z
+          );
+          if (dist < e.spec.size * 1.2) {
+            hitExtras.add(e);
+            hit = true;
+            break;
+          }
+        }
+      }
+
       if (hit) {
         b.alive = false;
         b.dispose();
@@ -159,7 +182,7 @@ export class ProjectileManager {
       }
     }
 
-    return { hitDrones, playerDamage };
+    return { hitDrones, hitExtras, playerDamage };
   }
 
   clear() {

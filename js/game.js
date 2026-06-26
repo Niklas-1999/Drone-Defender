@@ -11,6 +11,7 @@ import { WaveManager }       from './waves.js';
 import { EMP }               from './emp.js';
 import { AutoTurret }        from './autoturret.js';
 import { ShopSystem }        from './shop.js';
+import { Boss, Missile }     from './boss.js';
 
 // Money awarded per drone kill by type
 const KILL_MONEY = { scout: 10, warrior: 20, titan: 30 };
@@ -45,6 +46,10 @@ export class Game {
     // Auto turrets — null until purchased
     this._autoTurrets = { left: null, right: null };
 
+    // Boss state (set in _launchWave for boss waves)
+    this._boss         = null;
+    this._bossMissiles = [];
+
     // Music — three period groups, each with two tracks
     this._musicGroups   = null;
     this._musicPeriod   = 'day';
@@ -59,6 +64,7 @@ export class Game {
     this._initMusic();
     this._buildInfoPanel();
     this._buildCheatMenu();
+    this._buildBossHPBar();
 
     this.renderer.setAnimationLoop((t, frame) => this._loop(t, frame));
   }
@@ -411,6 +417,13 @@ export class Game {
     this.drones = [];
     this.projectiles.clear();
 
+    // Destroy boss / missiles
+    if (this._boss) { this._boss.destroy(); this._boss = null; }
+    for (const m of this._bossMissiles) m.destroy();
+    this._bossMissiles = [];
+    const hpBar = document.getElementById('boss-hp-bar');
+    if (hpBar) hpBar.style.display = 'none';
+
     // Destroy any lingering auto turrets
     for (const side of ['left', 'right']) {
       if (this._autoTurrets[side]) {
@@ -530,7 +543,16 @@ export class Game {
     this._hpAtWaveStart = this.playerHP;
 
     if (this._isBossWave(this.wave)) {
-      this.waves.startBossWave();
+      // Clear any stale wave state so isComplete() stays true (no drone spawns)
+      this.waves.startBossWave(); // sets config=[] → completes instantly
+      // Spawn the actual boss
+      this._boss         = new Boss(this.scene);
+      this._bossMissiles = [];
+      // Show desktop HP bar
+      const bar = document.getElementById('boss-hp-bar');
+      if (bar) { bar.style.display = 'block'; }
+      const fill = document.getElementById('boss-hp-fill');
+      if (fill) fill.style.width = '100%';
     } else {
       this.waves.startWave(this.wave);
     }
@@ -545,6 +567,11 @@ export class Game {
     for (const d of this.drones) d.destroy();
     this.drones = [];
     this.projectiles.clear();
+    if (this._boss) { this._boss.destroy(); this._boss = null; }
+    for (const m of this._bossMissiles) m.destroy();
+    this._bossMissiles = [];
+    const hpBar = document.getElementById('boss-hp-bar');
+    if (hpBar) hpBar.style.display = 'none';
     if (this.input.mouseLocked) document.exitPointerLock();
     this._stopMusic();
     this._fireworkTimer = 0;
@@ -612,6 +639,11 @@ export class Game {
     for (const d of this.drones) d.destroy();
     this.drones = [];
     this.projectiles.clear();
+    if (this._boss) { this._boss.destroy(); this._boss = null; }
+    for (const m of this._bossMissiles) m.destroy();
+    this._bossMissiles = [];
+    const hpBar = document.getElementById('boss-hp-bar');
+    if (hpBar) hpBar.style.display = 'none';
     if (this.input.mouseLocked) document.exitPointerLock();
     this._stopMusic();
     this._drawInfoPanel('gameover', this.score, this._waveDisplay(this.wave));
@@ -718,7 +750,11 @@ export class Game {
     // ── Turret aim + barrel spin ──────────────────────────────
     const isFiring = this.input.isTriggerHeld();
     this.turret.update(dt, this.vrMode, this.input, isFiring);
-    this.ui.setAimOnTarget(this.turret.isAimingAtDrone(this.drones));
+    this.ui.setAimOnTarget(this.turret.isAimingAtDrone([
+      ...this.drones,
+      ...(this._boss && !this._boss.dead ? [this._boss] : []),
+      ...this._bossMissiles,
+    ]));
 
     // ── Full-auto shooting ────────────────────────────────────
     if (isFiring) {
@@ -757,6 +793,28 @@ export class Game {
     const playerPos = new THREE.Vector3();
     this.camera.getWorldPosition(playerPos);
 
+    // ── Boss update ───────────────────────────────────────────
+    if (this._boss && !this._boss.dead) {
+      const newMissiles = this._boss.update(dt, playerPos, this.scene, this.camera);
+      this._bossMissiles.push(...newMissiles);
+    }
+
+    // ── Boss missile update ───────────────────────────────────
+    for (let i = this._bossMissiles.length - 1; i >= 0; i--) {
+      const m = this._bossMissiles[i];
+      if (m.dead) { m.destroy(); this._bossMissiles.splice(i, 1); continue; }
+      const { dist } = m.update(dt, playerPos, this.camera);
+      if (dist < 1.0) {
+        this.playerHP = Math.max(0, this.playerHP - m.damage);
+        this.particles.emit(playerPos.clone(), 'fire', 10, 7);
+        this.audio.baseHit();
+        this._shakeCamera();
+        m.dead = true; m.destroy();
+        this._bossMissiles.splice(i, 1);
+        if (this.playerHP <= 0) { this._gameOver(); return; }
+      }
+    }
+
     // ── Drone update ──────────────────────────────────────────
     for (let i = this.drones.length - 1; i >= 0; i--) {
       const drone = this.drones[i];
@@ -779,9 +837,13 @@ export class Game {
       }
     }
 
-    // ── Projectile update ─────────────────────────────────────
-    const { hitDrones, playerDamage } =
-      this.projectiles.update(dt, this.drones, playerPos);
+    // ── Projectile update (drones + boss + missiles) ──────────
+    const extras = [
+      ...(this._boss && !this._boss.dead ? [this._boss] : []),
+      ...this._bossMissiles,
+    ];
+    const { hitDrones, hitExtras, playerDamage } =
+      this.projectiles.update(dt, this.drones, playerPos, extras);
 
     for (const drone of hitDrones) {
       const killed = drone.hit(1);
@@ -796,6 +858,24 @@ export class Game {
       }
     }
 
+    for (const target of hitExtras) {
+      this.audio.hit();
+      if (target === this._boss) {
+        if (this._boss.hit(1)) { this._bossKilled(); return; }
+      } else {
+        // Missile shot down by player
+        if (target.hit(1)) {
+          this.score += 100;
+          this.money  += 5;
+          this.particles.emit(target.group.position.clone(), 'fire', 6, 5);
+          this.particles.emit(target.group.position.clone(), 'spark', 4, 6);
+          this.audio.explosion(0.4);
+          target.destroy();
+          this._bossMissiles = this._bossMissiles.filter(m => m !== target);
+        }
+      }
+    }
+
     if (playerDamage > 0) {
       this.playerHP = Math.max(0, this.playerHP - playerDamage);
       this.audio.baseHit();
@@ -806,13 +886,10 @@ export class Game {
     // ── Particles ─────────────────────────────────────────────
     this.particles.update(dt);
 
-    // ── Wave complete → final boss win or shop ────────────────
-    if (this.waves.isComplete() && this.drones.length === 0) {
-      if (this.wave === MAX_WAVE) {
-        // Final boss wave cleared → win!
-        this._win();
-        return;
-      }
+    // ── Wave complete check ───────────────────────────────────
+    if (this._isBossWave(this.wave)) {
+      // Boss wave: completion handled in _bossKilled() above
+    } else if (this.waves.isComplete() && this.drones.length === 0) {
       this.waves.scheduleNext(() => this._openShop(), 3);
     }
 
@@ -833,6 +910,18 @@ export class Game {
       empCooldown: this.emp.cooldownRemaining,
       fireRate:    this.turret.getFireRate(),
     });
+
+    // Desktop boss HP bar
+    const bar  = document.getElementById('boss-hp-bar');
+    const fill = document.getElementById('boss-hp-fill');
+    if (bar && fill) {
+      if (this._boss && !this._boss.dead) {
+        bar.style.display = 'block';
+        fill.style.width  = `${(this._boss.hp / this._boss.maxHp) * 100}%`;
+      } else if (bar.style.display !== 'none' && !this._boss) {
+        bar.style.display = 'none';
+      }
+    }
   }
 
   _shakeCamera() {
@@ -840,6 +929,57 @@ export class Game {
     this.cameraRig.position.x += (Math.random() - 0.5) * 0.10;
     this.cameraRig.position.z += (Math.random() - 0.5) * 0.05;
     setTimeout(() => this.cameraRig.position.copy(orig), 160);
+  }
+
+  // ── Boss HP bar (desktop HUD) ─────────────────────────────────
+  _buildBossHPBar() {
+    const bar = document.createElement('div');
+    bar.id = 'boss-hp-bar';
+    bar.style.cssText = `
+      display:none; position:fixed; top:18px; left:50%;
+      transform:translateX(-50%); width:380px;
+      pointer-events:none; z-index:50;
+    `;
+    bar.innerHTML = `
+      <div style="color:#ff99ff;font:bold 13px monospace;text-align:center;
+                  margin-bottom:4px;text-shadow:0 0 10px #ff00ff;letter-spacing:2px;">
+        ◈ BOSS ◈
+      </div>
+      <div style="background:#1a0028;border:1px solid #cc44ff;border-radius:3px;
+                  height:14px;overflow:hidden;">
+        <div id="boss-hp-fill" style="background:linear-gradient(90deg,#ff44ff,#9900ee);
+          height:100%;width:100%;transition:width 0.08s;"></div>
+      </div>
+    `;
+    document.body.appendChild(bar);
+  }
+
+  _bossKilled() {
+    const pos = this._boss.group.position.clone();
+    this.score += this._boss.points;
+    this.money += 200;
+
+    // Big death explosion
+    this.audio.explosion(3.0);
+    this.particles.emit(pos, 'fire',  40, 18);
+    this.particles.emit(pos, 'spark', 25, 16);
+
+    this._boss.destroy();
+    this._boss = null;
+
+    // Destroy all remaining missiles
+    for (const m of this._bossMissiles) { if (!m.dead) m.destroy(); }
+    this._bossMissiles = [];
+
+    // Hide desktop HP bar
+    const bar = document.getElementById('boss-hp-bar');
+    if (bar) bar.style.display = 'none';
+
+    if (this.wave === MAX_WAVE) {
+      this._win();
+    } else {
+      this.waves.scheduleNext(() => this._openShop(), 3);
+    }
   }
 
   // ── Cheat menu ────────────────────────────────────────────────
@@ -957,6 +1097,11 @@ export class Game {
     for (const d of this.drones) d.destroy();
     this.drones = [];
     this.projectiles.clear();
+    if (this._boss) { this._boss.destroy(); this._boss = null; }
+    for (const m of this._bossMissiles) m.destroy();
+    this._bossMissiles = [];
+    const hpBar = document.getElementById('boss-hp-bar');
+    if (hpBar) hpBar.style.display = 'none';
     for (const side of ['left', 'right']) {
       if (this._autoTurrets[side]) { this._autoTurrets[side].destroy(); this._autoTurrets[side] = null; }
     }
