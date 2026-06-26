@@ -1,9 +1,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js';
 
-// Day colour constants
-const DAY_AMB_COL   = new THREE.Color(0x9ec8ff);
-const DAY_FOG_COL   = new THREE.Color(0xb8d0e8);
-const DAY_BG_COL    = new THREE.Color(0x90caf9);
+// Day colour constants — vivid summer sky
+const DAY_AMB_COL   = new THREE.Color(0xbbd8ff);
+const DAY_FOG_COL   = new THREE.Color(0xd0eeff);
+const DAY_BG_COL    = new THREE.Color(0x87ceeb);
 // Night colour constants
 const NIGHT_AMB_COL = new THREE.Color(0x1a083a);
 const NIGHT_FOG_COL = new THREE.Color(0x080018);
@@ -50,6 +50,96 @@ class RainSystem {
   }
 }
 
+// ── Cloud system ──────────────────────────────────────────────────
+class CloudSystem {
+  constructor(scene) {
+    this._clouds = [];
+
+    // [x, y, z, widthM, depthM]  — spread across the sky above the action zone
+    const cloudData = [
+      [-55,  58,  -85, 48, 22],
+      [ 20,  64,  -98, 65, 28],
+      [ 82,  52,  -72, 40, 18],
+      [-88,  50, -108, 52, 24],
+      [  2,  68, -122, 72, 32],
+      [ 48,  60,  -62, 36, 16],
+      [-28,  55,  -52, 42, 19],
+      [ 68,  62, -142, 58, 26],
+      [-68,  48, -132, 63, 28],
+      [ 12,  58,  -44, 34, 15],
+      [ 38,  72, -162, 78, 35],
+      [-18,  62,  -75, 52, 23],
+      [ 88,  54, -102, 44, 20],
+      [-48,  66, -152, 68, 30],
+      [ -2,  50,  -32, 30, 14],
+      [ 58,  58,  -92, 46, 21],
+    ];
+
+    for (const [x, y, z, w, d] of cloudData) {
+      const cloud = this._makeCloud(w, d);
+      cloud.position.set(x, y, z);
+      cloud.rotation.x = -Math.PI / 2;
+      cloud.rotation.z = Math.random() * Math.PI;
+      this._clouds.push(cloud);
+      scene.add(cloud);
+    }
+  }
+
+  _makeCloud(width, depth) {
+    const CW = 512, CH = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = CW; canvas.height = CH;
+    const ctx    = canvas.getContext('2d');
+
+    const numPuffs = 5 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < numPuffs; i++) {
+      const px  = CW * (0.08 + Math.random() * 0.84);
+      const py  = CH * (0.35 + Math.random() * 0.42);
+      const r   = CH * (0.18 + Math.random() * 0.40);
+      const grd = ctx.createRadialGradient(px, py, 0, px, py, r);
+      grd.addColorStop(0,    'rgba(255,255,255,1.0)');
+      grd.addColorStop(0.55, 'rgba(255,255,255,0.78)');
+      grd.addColorStop(1,    'rgba(255,255,255,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const mat = new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(canvas),
+      transparent: true,
+      depthWrite: false,
+      fog: false,
+      side: THREE.DoubleSide,
+    });
+    return new THREE.Mesh(new THREE.PlaneGeometry(width, depth), mat);
+  }
+
+  // t: 0=day, 1=evening, 2=night
+  update(t) {
+    const s = t < 1 ? t : t - 1;  // 0→1 within current segment
+    let opacity, r, g, b;
+    if (t < 1) {
+      // Day (white, light) → Evening (large, warm orange-purple)
+      opacity = 0.55 + s * 0.30;
+      r = 1;
+      g = 1    - s * 0.20;
+      b = 1    - s * 0.58;
+    } else {
+      // Evening → Night (dark charcoal, heavy overcast)
+      opacity = 0.85 + s * 0.13;
+      r = 1    - s * 0.72;
+      g = 0.80 - s * 0.68;
+      b = 0.42 - s * 0.34;
+    }
+    for (const c of this._clouds) {
+      c.material.opacity = opacity;
+      c.material.color.setRGB(Math.max(0, r), Math.max(0, g), Math.max(0, b));
+    }
+  }
+}
+
 export class SceneBuilder {
   constructor(scene) {
     this._scene = scene;
@@ -76,6 +166,7 @@ export class SceneBuilder {
     this._nightSky = null;
     this._stars    = null;
     this._rain     = null;
+    this._clouds   = null;
   }
 
   build() {
@@ -85,7 +176,8 @@ export class SceneBuilder {
     this._addNearBuildings();
     this._addSkyscrapers();
     this._addCityFloor();
-    this._rain = new RainSystem(this._scene);
+    this._rain   = new RainSystem(this._scene);
+    this._clouds = new CloudSystem(this._scene);
     this._applyBlend(0); // start as full daytime
   }
 
@@ -137,12 +229,12 @@ export class SceneBuilder {
       new THREE.SphereGeometry(376, 32, 16),
       new THREE.MeshBasicMaterial({
         map: this._makeSkyTex([
-          [0.00, '#0b2a6b'],
-          [0.30, '#1565c0'],
-          [0.60, '#42a5f5'],
-          [0.80, '#90caf9'],
-          [0.92, '#c8dff0'],
-          [1.00, '#b0cce0'],
+          [0.00, '#0a4898'],
+          [0.28, '#1a82d0'],
+          [0.55, '#42b5f5'],
+          [0.78, '#80ccee'],
+          [0.92, '#b5e4f8'],
+          [1.00, '#d0f2ff'],
         ]),
         side: THREE.BackSide,
       })
@@ -210,7 +302,7 @@ export class SceneBuilder {
     this._scene.add(this._stars);
 
     // Start as day
-    this._scene.fog = new THREE.FogExp2(0xb8d0e8, 0.006);
+    this._scene.fog = new THREE.FogExp2(0xd0eeff, 0.006);
     this._scene.background = DAY_BG_COL.clone();
   }
 
@@ -287,6 +379,8 @@ export class SceneBuilder {
     this._moon.intensity     = ngtFrac * 0.35;
     for (const l of this._neonLights) l.intensity = l.userData.ni * ngtFrac;
     this._streetGlow.intensity = 6 * ngtFrac;
+
+    this._clouds?.update(t);
   }
 
   // ── Player rooftop ────────────────────────────────────────────

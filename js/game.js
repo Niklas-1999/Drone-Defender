@@ -501,6 +501,7 @@ export class Game {
     const needSwitch = newPeriod !== this._currentPeriod;
 
     if (needSwitch) {
+      this.state = 'playing'; // enter playing state so _loop drives sceneBuilder.update()
       this._skyTransitioning = true;
       this._switchMusicPeriod(newPeriod);
       this.sceneBuilder.startTransition(newPeriod, 4.0, () => {
