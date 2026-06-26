@@ -12,6 +12,7 @@ import { EMP }               from './emp.js';
 import { AutoTurret }        from './autoturret.js';
 import { ShopSystem }        from './shop.js';
 import { Boss, Missile, Boss2, ShieldOrb } from './boss.js';
+import { Boss3, Boss3Part, Boss3Rocket }   from './boss3.js';
 
 // Money awarded per drone kill by type
 const KILL_MONEY = { scout: 10, warrior: 20, titan: 30 };
@@ -547,7 +548,10 @@ export class Game {
       // Clear any stale wave state so isComplete() stays true (no drone spawns)
       this.waves.startBossWave(); // sets config=[] → completes instantly
       // Spawn the correct boss by wave number
-      this._boss = this.wave === 12 ? new Boss2(this.scene) : new Boss(this.scene);
+      this._boss = this.wave === 6  ? new Boss(this.scene)  :
+                   this.wave === 12 ? new Boss2(this.scene) :
+                   this.wave === 18 ? new Boss3(this.scene) :
+                   new Boss(this.scene);
       this._bossMissiles = [];
       // Show desktop HP bar
       const bar = document.getElementById('boss-hp-bar');
@@ -754,12 +758,15 @@ export class Game {
     }
 
     // ── Turret aim + barrel spin ──────────────────────────────
+    const bossBodyHittable = this._boss && !this._boss.dead &&
+      (!this._boss.phase || this._boss.phase === 3);
     const isFiring = this.input.isTriggerHeld();
     this.turret.update(dt, this.vrMode, this.input, isFiring);
     this.ui.setAimOnTarget(this.turret.isAimingAtDrone([
       ...this.drones,
-      ...(this._boss && !this._boss.dead ? [this._boss] : []),
+      ...(bossBodyHittable ? [this._boss] : []),
       ...this._bossMissiles,
+      ...(this._boss?.parts?.filter(p => !p.dead) ?? []),
       ...(this._boss?.shields?.filter(s => !s.dead) ?? []),
     ]));
 
@@ -846,8 +853,9 @@ export class Game {
 
     // ── Projectile update (drones + boss + missiles) ──────────
     const extras = [
-      ...(this._boss && !this._boss.dead ? [this._boss] : []),
+      ...(bossBodyHittable ? [this._boss] : []),
       ...this._bossMissiles,
+      ...(this._boss?.parts?.filter(p => !p.dead) ?? []),
       ...(this._boss?.shields?.filter(s => !s.dead) ?? []),
     ];
     const { hitDrones, hitExtras, playerDamage } =
@@ -870,6 +878,16 @@ export class Game {
       this.audio.hit();
       if (target.kind === 'boss') {
         if (this._boss.hit(1)) { this._bossKilled(); return; }
+      } else if (target.kind === 'shoulder' || target.kind === 'neck') {
+        if (target.hit(1)) {
+          this.score += target.kind === 'neck' ? 500 : 300;
+          this.particles.emit(target.group.position.clone(), 'fire', 24, 14);
+          this.particles.emit(target.group.position.clone(), 'spark', 18, 12);
+          this.audio.explosion(2.0);
+          this._boss.onPartDestroyed(target);
+        } else {
+          this.particles.emit(target.group.position.clone(), 'spark', 2, 5);
+        }
       } else if (target.kind === 'shield') {
         if (target.hit(1)) {
           this.score += 50;
@@ -930,7 +948,10 @@ export class Game {
     if (bar && fill) {
       if (this._boss && !this._boss.dead) {
         bar.style.display = 'block';
-        fill.style.width  = `${(this._boss.hp / this._boss.maxHp) * 100}%`;
+        const hpFrac = this._boss.getHpFraction
+          ? this._boss.getHpFraction()
+          : this._boss.hp / this._boss.maxHp;
+        fill.style.width = `${hpFrac * 100}%`;
       } else if (bar.style.display !== 'none' && !this._boss) {
         bar.style.display = 'none';
       }

@@ -567,6 +567,17 @@ export class Boss2 {
     this._hpMesh.position.y = S * 0.77;
     this.group.add(this._hpMesh);
     this._redrawHPBar();
+
+    // Translucent shield dome — visible while any shield orb is alive
+    this._shieldDome = new THREE.Mesh(
+      new THREE.SphereGeometry(S * 1.05, 20, 14),
+      new THREE.MeshBasicMaterial({
+        color: 0x00ddcc, transparent: true, opacity: 0.16,
+        side: THREE.DoubleSide, depthWrite: false,
+      })
+    );
+    this._shieldDome.visible = false;
+    this.group.add(this._shieldDome);
   }
 
   _redrawHPBar() {
@@ -664,6 +675,9 @@ export class Boss2 {
       this._vulnerable      = true;
       this._vulnerableTimer = this._vulnerableDur;
     }
+
+    // Shield dome visible while boss is protected (shields alive + not in open window)
+    this._shieldDome.visible = !allShieldsDown && !this._vulnerable;
 
     // ── Shield orbit update ───────────────────────────────────
     for (const shield of this.shields) {
