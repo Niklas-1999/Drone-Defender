@@ -58,6 +58,7 @@ export class Game {
     this._initSystems();
     this._initMusic();
     this._buildInfoPanel();
+    this._buildCheatMenu();
 
     this.renderer.setAnimationLoop((t, frame) => this._loop(t, frame));
   }
@@ -295,8 +296,11 @@ export class Game {
 
       ctx.fillStyle = '#666688';
       ctx.font = '18px monospace';
-      ctx.fillText('VR: aim controller at this panel + trigger', W / 2, 300);
-      ctx.fillText('Desktop: Press SPACE', W / 2, 324);
+      ctx.fillText('VR: aim controller at this panel + trigger', W / 2, 296);
+      ctx.fillText('Desktop: Press SPACE', W / 2, 318);
+      ctx.fillStyle = '#334455';
+      ctx.font = '13px monospace';
+      ctx.fillText('` (backtick) — cheat menu', W / 2, 334);
 
     } else if (panelState === 'gameover') {
       ctx.fillStyle = '#ff4444';
@@ -826,5 +830,170 @@ export class Game {
     this.cameraRig.position.x += (Math.random() - 0.5) * 0.10;
     this.cameraRig.position.z += (Math.random() - 0.5) * 0.05;
     setTimeout(() => this.cameraRig.position.copy(orig), 160);
+  }
+
+  // ── Cheat menu ────────────────────────────────────────────────
+  _buildCheatMenu() {
+    // Wave label → internal wave number mapping
+    const sections = [
+      { label: 'DAY',     color: '#87ceeb', waves: [['W1',1],['W2',2],['W3',3],['W4',4],['W5',5],['BOSS 1',6]] },
+      { label: 'EVENING', color: '#f07030', waves: [['W6',7],['W7',8],['W8',9],['W9',10],['W10',11],['BOSS 2',12]] },
+      { label: 'NIGHT',   color: '#44aaff', waves: [['W11',13],['W12',14],['W13',15],['W14',16],['W15',17],['BOSS 3',18]] },
+    ];
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+      display:none; position:fixed; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      background:rgba(0,5,15,0.97);
+      border:2px solid #00aaff; border-radius:14px;
+      padding:22px 26px; color:#fff; font-family:monospace;
+      z-index:200; min-width:560px;
+      box-shadow:0 0 50px rgba(0,160,255,0.4);
+    `;
+
+    let rows = `
+      <div style="text-align:center;color:#00ddff;font-size:19px;font-weight:bold;
+                  letter-spacing:2px;margin-bottom:6px;">⚠ CHEAT MENU ⚠</div>
+      <div style="text-align:center;color:#334466;font-size:11px;margin-bottom:16px;">
+        Backtick (\`) to open/close &nbsp;|&nbsp; Wave buttons start a fresh game at that wave
+      </div>
+    `;
+
+    for (const { label, color, waves } of sections) {
+      rows += `<div style="display:flex;align-items:center;gap:7px;margin-bottom:9px;">
+        <span style="color:${color};width:62px;font-size:11px;text-align:right;flex-shrink:0;">${label}</span>`;
+      for (const [wLabel, wNum] of waves) {
+        const boss = wLabel.startsWith('BOSS');
+        rows += `<button data-wave="${wNum}" style="
+          background:${boss ? '#2a1800' : '#001020'};
+          border:1px solid ${boss ? '#cc8800' : '#005588'};
+          color:${boss ? '#ffaa00' : '#88ccff'};
+          font-family:monospace;font-size:11px;padding:5px 9px;
+          border-radius:5px;cursor:pointer;white-space:nowrap;">${wLabel}</button>`;
+      }
+      rows += `</div>`;
+    }
+
+    rows += `
+      <div style="margin-top:14px;border-top:1px solid #0a1a2a;padding-top:13px;
+                  display:flex;gap:9px;flex-wrap:wrap;">
+        <button id="cheat-all" style="flex:2;background:#002510;border:1px solid #00aa55;
+          color:#00ff88;font-family:monospace;font-size:12px;
+          padding:9px 12px;border-radius:6px;cursor:pointer;">
+          ★ All Upgrades + $9999
+        </button>
+        <button id="cheat-money" style="flex:1;background:#1a1000;border:1px solid #aa8800;
+          color:#ffd700;font-family:monospace;font-size:12px;
+          padding:9px 12px;border-radius:6px;cursor:pointer;">
+          +$9999
+        </button>
+        <button id="cheat-hp" style="flex:1;background:#1a0010;border:1px solid #aa0044;
+          color:#ff6688;font-family:monospace;font-size:12px;
+          padding:9px 12px;border-radius:6px;cursor:pointer;">
+          Full HP
+        </button>
+        <button id="cheat-close" style="background:#100008;border:1px solid #440022;
+          color:#ff4466;font-family:monospace;font-size:12px;
+          padding:9px 12px;border-radius:6px;cursor:pointer;">✕</button>
+      </div>
+    `;
+
+    panel.innerHTML = rows;
+    document.body.appendChild(panel);
+    this._cheatPanel = panel;
+
+    // Wave buttons
+    panel.querySelectorAll('[data-wave]').forEach(btn => {
+      btn.addEventListener('mouseenter', () => btn.style.filter = 'brightness(1.5)');
+      btn.addEventListener('mouseleave', () => btn.style.filter = '');
+      btn.addEventListener('click', () => {
+        this._cheatPanel.style.display = 'none';
+        this._cheatStartWave(parseInt(btn.dataset.wave));
+      });
+    });
+
+    document.getElementById('cheat-all').addEventListener('click', () => {
+      if (this.state === 'menu') this._cheatStartWave(1);
+      this._cheatAllUpgrades();
+    });
+    document.getElementById('cheat-money').addEventListener('click', () => {
+      if (this.state === 'menu') this._cheatStartWave(1);
+      this.money += 9999;
+    });
+    document.getElementById('cheat-hp').addEventListener('click', () => {
+      this.playerHP = 100;
+    });
+    document.getElementById('cheat-close').addEventListener('click', () => {
+      this._cheatPanel.style.display = 'none';
+    });
+
+    // Backtick toggles the panel
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Backquote') {
+        e.preventDefault();
+        const vis = this._cheatPanel.style.display !== 'none';
+        this._cheatPanel.style.display = vis ? 'none' : 'block';
+      }
+    });
+  }
+
+  _cheatStartWave(targetWave) {
+    if (!this.audio.initialized) this.audio.init();
+
+    // Full reset (mirrors start())
+    for (const d of this.drones) d.destroy();
+    this.drones = [];
+    this.projectiles.clear();
+    for (const side of ['left', 'right']) {
+      if (this._autoTurrets[side]) { this._autoTurrets[side].destroy(); this._autoTurrets[side] = null; }
+    }
+
+    this.state    = 'playing';
+    this.score    = 0;
+    this.wave     = targetWave - 1; // _startNextWave will increment to targetWave
+    this.playerHP = 100;
+    this.money    = 500;
+
+    this._upgradeLevels = {};
+    this.shop.resetUpgrades();
+    this.emp.unlocked = false; this.emp.cooldownMax = 15;
+    this.emp.stunDuration = 1.0; this.emp._cooldownT = 0;
+    this.turret.setMaxAmmo(50); this.turret.setFireCooldown(0.20);
+    this.turret.reload(); this._emptyGunPlayed = false;
+
+    this._infoPanel.visible = false;
+    this._panelBtnHovered   = false;
+    this.shop.close();
+    this.ui.hideOverlay();
+
+    // Snap sky/music directly to the target period — no transition
+    const period = this._getPeriod(targetWave);
+    this._currentPeriod    = period;
+    this._skyTransitioning = false;
+    this.audio.stopRain();
+    this.sceneBuilder.snapToPeriod(period);
+    this.sceneBuilder.setLightningCallback(() => this.audio.thunder());
+    this._turretLight.intensity = this.sceneBuilder.currentBlend * 1.5;
+    if (period === 'night') this.audio.startRain();
+
+    // Music for this period
+    this._stopAllMusic();
+    this._musicPeriod = period;
+    this._startMusic();
+
+    this._startNextWave(); // wave becomes targetWave; period matches so no sky transition fires
+  }
+
+  _cheatAllUpgrades() {
+    this.money = Math.max(this.money, 9999);
+    const ids = ['ammo_cap','fire_rate','turret_l','turret_r','turret_rate','buy_emp','emp_cd','emp_stun'];
+    for (const id of ids) {
+      const upg = this.shop.getUpgrade(id);
+      if (!upg) continue;
+      this._upgradeLevels[id] = upg.maxLevel;
+      this.shop.levels[id]    = upg.maxLevel;
+      upg.apply(this, upg.maxLevel);
+    }
   }
 }

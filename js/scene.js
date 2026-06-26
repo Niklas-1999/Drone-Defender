@@ -324,6 +324,17 @@ export class SceneBuilder {
   setRainVisible(v)         { if (this._rain)      this._rain.setVisible(v); }
   setLightningCallback(cb)  { if (this._lightning) this._lightning.setOnStrike(cb); }
 
+  // Instantly snap to a period with no animation (used by cheat menu).
+  snapToPeriod(period) {
+    const TARGET = { day: 0, evening: 1, night: 2 };
+    this.currentBlend   = TARGET[period] ?? 0;
+    this._blendFrom     = this.currentBlend;
+    this._blendTo       = this.currentBlend;
+    this._transitioning = false;
+    this._applyBlend(this.currentBlend);
+    if (this._rain) this._rain.setVisible(period === 'night');
+  }
+
   // Call every frame from game.js while transitioning or rain is active
   update(dt) {
     if (this._rain)      this._rain.update(dt);
