@@ -300,4 +300,23 @@ export class AudioSystem {
     osc.connect(gain); gain.connect(ctx.destination);
     osc.start(t); osc.stop(t + 0.3);
   }
+
+  // Deep two-tone alarm beep for boss warning
+  warningBeep() {
+    if (!this.initialized) return;
+    this._resume();
+    const ctx = this.ctx, t = ctx.currentTime;
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    // Drop from 220 Hz to 160 Hz — classic alarm two-tone
+    osc.frequency.setValueAtTime(220, t);
+    osc.frequency.linearRampToValueAtTime(160, t + 0.22);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.55, t + 0.03);
+    gain.gain.setValueAtTime(0.55, t + 0.30);
+    gain.gain.linearRampToValueAtTime(0, t + 0.42);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(t); osc.stop(t + 0.44);
+  }
 }

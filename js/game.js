@@ -954,29 +954,35 @@ export class Game {
   _buildBossWarning() {
     const el = document.createElement('div');
     el.id = 'boss-warning';
-    el.textContent = '!!! BOSS INCOMING !!!';
+    el.innerHTML = '⚠ BOSS INCOMING ⚠<br><span style="font-size:0.42em;letter-spacing:0.25em">PREPARE FOR COMBAT</span>';
     el.style.cssText = `
-      display:none; position:fixed; top:38%; left:50%;
-      transform:translateX(-50%); z-index:300; pointer-events:none;
-      color:#ff2222; font:900 3.6em monospace; white-space:nowrap;
-      text-align:center; letter-spacing:0.06em;
-      text-shadow:0 0 24px #ff0000, 0 0 60px #ff000066;
+      display:none; position:fixed;
+      top:50%; left:50%; transform:translate(-50%,-50%);
+      z-index:1000; pointer-events:none;
+      color:#ff1111; font:900 5.5em monospace; white-space:nowrap;
+      text-align:center; line-height:1.3;
+      text-shadow:0 0 30px #ff0000, 0 0 80px #ff0000;
+      background:rgba(60,0,0,0.72);
+      padding:0.25em 0.6em; border-radius:10px;
+      border:4px solid #ff2200;
     `;
     document.body.appendChild(el);
   }
 
   _showBossWarning(cb) {
-    const el = document.getElementById('boss-warning');
-    el.style.display = 'block';
-    const anim = el.animate(
-      [{ opacity: 1 }, { opacity: 0.08 }],
-      { duration: 380, iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' }
-    );
-    setTimeout(() => {
-      anim.cancel();
-      el.style.display = 'none';
-      cb();
-    }, 3200);
+    const el  = document.getElementById('boss-warning');
+    const ON  = 600;  // ms visible per flash
+    const OFF = 280;  // ms dark between flashes
+    let n = 0;
+
+    const flash = () => {
+      if (n >= 3) { el.style.display = 'none'; cb(); return; }
+      n++;
+      el.style.display = 'block';
+      this.audio.warningBeep();
+      setTimeout(() => { el.style.display = 'none'; setTimeout(flash, OFF); }, ON);
+    };
+    flash();
   }
 
   // ── Boss HP bar (desktop HUD) ─────────────────────────────────

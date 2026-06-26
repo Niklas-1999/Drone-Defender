@@ -372,8 +372,8 @@ export class Boss {
 // ── ShieldOrb (Boss 2) ─────────────────────────────────────────
 export class ShieldOrb {
   constructor(scene, orbitIndex, numOrbs) {
-    this.hp     = 10;
-    this.maxHp  = 10;
+    this.hp     = 3;
+    this.maxHp  = 3;
     this.dead   = false;
     this.kind   = 'shield';
     this._scene = scene;
