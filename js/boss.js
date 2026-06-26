@@ -499,6 +499,9 @@ export class Boss2 {
     this._hitFlash        = 0;
     this._animTimer       = 0;
 
+    this._missileInterval = 3.5; // seconds between missiles (phase 1)
+    this._missileTimer    = 2.0; // initial delay before first shot
+
     this.shields = [];
     for (let i = 0; i < 3; i++) this.shields.push(new ShieldOrb(scene, i, 3));
 
@@ -585,11 +588,15 @@ export class Boss2 {
   _updatePhase() {
     if (this.hp <= 100 && this._phase < 3) {
       this._phase         = 3;
-      this._orbitSpeed    = 0.285; // phase 3
-      this._vulnerableDur = 4.0;
+      this._orbitSpeed      = 0.285;
+      this._vulnerableDur   = 4.0;
+      this._missileInterval = 1.4;
+      if (this._missileTimer > this._missileInterval) this._missileTimer = this._missileInterval;
     } else if (this.hp <= 200 && this._phase < 2) {
-      this._phase         = 2;
-      this._orbitSpeed    = 0.185; // phase 2
+      this._phase           = 2;
+      this._orbitSpeed      = 0.185;
+      this._missileInterval = 2.2;
+      if (this._missileTimer > this._missileInterval) this._missileTimer = this._missileInterval;
       this._vulnerableDur = 6.0;
     }
   }
@@ -663,8 +670,21 @@ export class Boss2 {
       shield.update(dt, this.group.position, camera);
     }
 
+    // ── Missile spawn ─────────────────────────────────────────
+    const newMissiles = [];
+    this._missileTimer -= dt;
+    if (this._missileTimer <= 0) {
+      this._missileTimer = this._missileInterval;
+      newMissiles.push(this._spawnMissile(scene, targetPos));
+    }
+
     if (camera) this._hpMesh.lookAt(camera.getWorldPosition(new THREE.Vector3()));
-    return [];
+    return newMissiles;
+  }
+
+  _spawnMissile(scene, targetPos) {
+    const offset = new THREE.Vector3((Math.random() - 0.5) * 2, -1.2, 0);
+    return new Missile(this.group.position.clone().add(offset), targetPos, scene);
   }
 
   destroy() {

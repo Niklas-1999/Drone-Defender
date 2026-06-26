@@ -65,6 +65,7 @@ export class Game {
     this._buildInfoPanel();
     this._buildCheatMenu();
     this._buildBossHPBar();
+    this._buildBossWarning();
 
     this.renderer.setAnimationLoop((t, frame) => this._loop(t, frame));
   }
@@ -726,7 +727,12 @@ export class Game {
 
     if (action === 'continue') {
       this.shop.close();
-      this._startNextWave();
+      // wave+1 because _startNextWave() increments before launching
+      if (this._isBossWave(this.wave + 1)) {
+        this._showBossWarning(() => this._startNextWave());
+      } else {
+        this._startNextWave();
+      }
     } else if (action) {
       this._applyUpgrade(action);
     }
@@ -942,6 +948,35 @@ export class Game {
   _setLightBlend(v) {
     this._turretLight.intensity = v;
     for (const at of Object.values(this._autoTurrets)) at?.setLightIntensity(v);
+  }
+
+  // ── Boss warning overlay ──────────────────────────────────────
+  _buildBossWarning() {
+    const el = document.createElement('div');
+    el.id = 'boss-warning';
+    el.textContent = '!!! BOSS INCOMING !!!';
+    el.style.cssText = `
+      display:none; position:fixed; top:38%; left:50%;
+      transform:translateX(-50%); z-index:300; pointer-events:none;
+      color:#ff2222; font:900 3.6em monospace; white-space:nowrap;
+      text-align:center; letter-spacing:0.06em;
+      text-shadow:0 0 24px #ff0000, 0 0 60px #ff000066;
+    `;
+    document.body.appendChild(el);
+  }
+
+  _showBossWarning(cb) {
+    const el = document.getElementById('boss-warning');
+    el.style.display = 'block';
+    const anim = el.animate(
+      [{ opacity: 1 }, { opacity: 0.08 }],
+      { duration: 380, iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' }
+    );
+    setTimeout(() => {
+      anim.cancel();
+      el.style.display = 'none';
+      cb();
+    }, 3200);
   }
 
   // ── Boss HP bar (desktop HUD) ─────────────────────────────────
