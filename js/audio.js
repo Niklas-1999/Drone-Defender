@@ -240,7 +240,7 @@ export class AudioSystem {
     this._rainSrc.connect(hi); hi.connect(lo); lo.connect(this._rainGain);
     this._rainGain.connect(ctx.destination);
     this._rainSrc.start();
-    this._rainGain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 3.0);
+    this._rainGain.gain.linearRampToValueAtTime(0.072, ctx.currentTime + 3.0);
   }
 
   stopRain() {
@@ -267,21 +267,21 @@ export class AudioSystem {
     const crackGain = ctx.createGain();
     crackFilt.type = 'bandpass'; crackFilt.frequency.value = 600; crackFilt.Q.value = 0.4;
     crackSrc.buffer = crackBuf;
-    crackGain.gain.setValueAtTime(0.55, t);
-    crackGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    crackGain.gain.setValueAtTime(0.9, t);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
     crackSrc.connect(crackFilt); crackFilt.connect(crackGain); crackGain.connect(ctx.destination);
     crackSrc.start(t);
 
     // Rolling deep rumble
-    const rumbleBuf  = this._noiseBuffer(3.0);
+    const rumbleBuf  = this._noiseBuffer(4.0);
     const rumbleSrc  = ctx.createBufferSource();
     const rumbleFilt = ctx.createBiquadFilter();
     const rumbleGain = ctx.createGain();
     rumbleFilt.type = 'lowpass'; rumbleFilt.frequency.value = 100;
     rumbleSrc.buffer = rumbleBuf;
     rumbleGain.gain.setValueAtTime(0, t + 0.04);
-    rumbleGain.gain.linearRampToValueAtTime(0.45, t + 0.18);
-    rumbleGain.gain.exponentialRampToValueAtTime(0.001, t + 3.0);
+    rumbleGain.gain.linearRampToValueAtTime(0.75, t + 0.20);
+    rumbleGain.gain.exponentialRampToValueAtTime(0.001, t + 4.0);
     rumbleSrc.connect(rumbleFilt); rumbleFilt.connect(rumbleGain); rumbleGain.connect(ctx.destination);
     rumbleSrc.start(t);
   }

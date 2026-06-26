@@ -509,7 +509,7 @@ export class Game {
       this.sceneBuilder.startTransition(newPeriod, 4.0, () => {
         this._currentPeriod = newPeriod;
         this._skyTransitioning = false;
-        for (const d of this.drones) d.setNightMode(this._currentPeriod !== 'day');
+        for (const d of this.drones) d.setPeriodMode(this._currentPeriod);
         if (this._currentPeriod === 'night') {
           this.sceneBuilder.setRainVisible(true);
           this.audio.startRain();
@@ -735,7 +735,7 @@ export class Game {
     // ── Wave spawning ─────────────────────────────────────────
     const newDrones = this.waves.update(dt);
     for (const d of newDrones) {
-      if (this._currentPeriod !== 'day') d.setNightMode(true);
+      d.setPeriodMode(this._currentPeriod);
     }
     this.drones.push(...newDrones);
 

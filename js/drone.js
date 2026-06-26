@@ -40,6 +40,7 @@ export class Drone {
     this._stunTimer     = 0;
     this._scanTimer     = 0;
     this._hitFlashTimer = 0;
+    this._periodColor   = this.spec.color; // current display color (varies by period)
 
     this.group = new THREE.Group();
     this._buildMesh();
@@ -104,25 +105,40 @@ export class Drone {
     this.group.add(this._scanMesh);
   }
 
-  // ── Night-mode glow ───────────────────────────────────────────
-  // Called when the day/night cycle switches.
-  setNightMode(isNight) {
-    this._bodyMesh.material = isNight
-      ? new THREE.MeshBasicMaterial({ color: this.spec.color })
-      : new THREE.MeshLambertMaterial({ color: this.spec.color });
+  // ── Period colour mode ────────────────────────────────────────
+  // Colours by type for each time period
+  static PALETTE = {
+    day: {
+      body:   { scout: 0xff3322, warrior: 0xff6600, titan: 0x990000 },
+      prop:   0x00aaff, propOp: 0.45, eye: 0xff0000, basic: false,
+    },
+    evening: {
+      body:   { scout: 0x88ff22, warrior: 0x22cc00, titan: 0x115500 },
+      prop:   0xaaff44, propOp: 0.70, eye: 0xddff00, basic: true,
+    },
+    night: {
+      body:   { scout: 0x00ffcc, warrior: 0x44aaff, titan: 0x0055dd },
+      prop:   0x00ffff, propOp: 0.85, eye: 0x00ffff, basic: true,
+    },
+  };
 
-    const propOpacity = isNight ? 0.85 : 0.45;
-    const propColor   = isNight ? 0x00ffff : 0x00aaff;
+  setPeriodMode(period) {
+    const pal   = Drone.PALETTE[period] ?? Drone.PALETTE.day;
+    const color = pal.body[this.spec.name] ?? pal.body.scout;
+    this._periodColor = color;
+
+    this._bodyMesh.material = pal.basic
+      ? new THREE.MeshBasicMaterial({ color })
+      : new THREE.MeshLambertMaterial({ color });
+
     for (const p of this._propellers) {
       p.material = new THREE.MeshBasicMaterial({
-        color: propColor, transparent: true, opacity: propOpacity, side: THREE.DoubleSide,
+        color: pal.prop, transparent: true, opacity: pal.propOp, side: THREE.DoubleSide,
       });
     }
 
-    // Eye glows brighter at night
-    // (eye is the second child: group → bodyMesh, eye, ...)
     if (this.group.children[1]?.isMesh) {
-      this.group.children[1].material.color.setHex(isNight ? 0xff4400 : 0xff0000);
+      this.group.children[1].material.color.setHex(pal.eye);
     }
   }
 
@@ -158,7 +174,7 @@ export class Drone {
       this._stunTimer -= dt;
       this._bodyMesh.material.color.setHex(0x0066ff);
     } else {
-      this._bodyMesh.material.color.setHex(this.spec.color);
+      this._bodyMesh.material.color.setHex(this._periodColor);
     }
 
     // Scan timer

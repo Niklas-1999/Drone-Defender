@@ -53,93 +53,114 @@ class RainSystem {
 // ── Lightning system ──────────────────────────────────────────────
 class LightningSystem {
   constructor(scene) {
-    this._scene     = scene;
-    this._onStrike  = null;
-    this._timer     = 8 + Math.random() * 12; // first strike in 8-20s
-    this._phase     = 'idle';  // 'idle' | 'flash1' | 'gap' | 'flash2' | 'done'
-    this._phaseT    = 0;
-    this._bolt      = null;
+    this._scene    = scene;
+    this._onStrike = null;
+    this._timer    = 6 + Math.random() * 10; // first strike in 6-16s
+    this._phase    = 'idle';
+    this._phaseT   = 0;
+    this._bolt     = null;
+    this._bolts    = []; // branching bolts
 
-    // Persistent flash light (intensity driven per-frame)
-    this._flashLight = new THREE.PointLight(0xddeeff, 0, 600);
+    // Directional point light for local illumination from the bolt
+    this._flashLight = new THREE.PointLight(0xddeeff, 0, 800);
     this._flashLight.position.set(0, 60, -100);
     scene.add(this._flashLight);
+
+    // Full-scene ambient flash — mimics sky-wide illumination
+    this._flashAmb = new THREE.AmbientLight(0xddeeff, 0);
+    scene.add(this._flashAmb);
   }
 
   setOnStrike(cb) { this._onStrike = cb; }
 
-  // nightFrac: 0 at blend=1, 1 at blend=2
   update(dt, nightFrac) {
-    if (nightFrac <= 0) { this._flashLight.intensity = 0; return; }
-
-    if (this._phase !== 'idle') {
-      this._tickFlash(dt);
+    if (nightFrac <= 0) {
+      this._flashLight.intensity = 0;
+      this._flashAmb.intensity   = 0;
       return;
     }
 
+    if (this._phase !== 'idle') { this._tickFlash(dt); return; }
+
     this._timer -= dt;
     if (this._timer <= 0) {
-      this._trigger(nightFrac);
-      this._timer = 5 + Math.random() * 20;
+      this._trigger();
+      this._timer = 4 + Math.random() * 18;
     }
   }
 
-  _trigger(nightFrac) {
-    const x   = (Math.random() - 0.5) * 120;
-    const z   = -80 - Math.random() * 100;
-    const yTop = 55 + Math.random() * 20;
-
-    // Jagged bolt geometry
-    const pts  = [];
-    const steps = 8 + Math.floor(Math.random() * 5);
-    const yBot  = 18 + Math.random() * 18;
+  _makeBolt(ox, oyTop, oz, jitterScale) {
+    const pts   = [];
+    const steps = 10 + Math.floor(Math.random() * 7);
+    const yBot  = 12 + Math.random() * 20;
+    let cx = ox, cz = oz;
     for (let i = 0; i <= steps; i++) {
-      const tf = i / steps;
-      const jit = (i === 0 || i === steps) ? 0 : (Math.random() - 0.5) * 9;
+      const tf  = i / steps;
+      const jit = (i === 0 || i === steps) ? 0 : (Math.random() - 0.5) * jitterScale;
+      cx += (Math.random() - 0.5) * jitterScale * 0.4;
+      cz += (Math.random() - 0.5) * jitterScale * 0.15;
       pts.push(new THREE.Vector3(
-        x + jit,
-        yTop - (yTop - yBot) * tf,
-        z + (Math.random() - 0.5) * 5,
+        cx + jit,
+        oyTop - (oyTop - yBot) * tf,
+        cz,
       ));
     }
-    const geo = new THREE.BufferGeometry().setFromPoints(pts);
-    this._bolt = new THREE.Line(geo,
-      new THREE.LineBasicMaterial({ color: 0xddeeff, transparent: true, opacity: 0.9 })
+    const geo  = new THREE.BufferGeometry().setFromPoints(pts);
+    const line = new THREE.Line(geo,
+      new THREE.LineBasicMaterial({ color: 0xeef8ff, transparent: true, opacity: 0.95 })
     );
-    this._scene.add(this._bolt);
+    this._scene.add(line);
+    return line;
+  }
 
-    this._flashLight.position.set(x, yTop * 0.6, z);
+  _trigger() {
+    const x    = (Math.random() - 0.5) * 180;
+    const z    = -90 - Math.random() * 120;
+    const yTop = 70 + Math.random() * 30;
+
+    // Main bolt + 1-2 smaller branches
+    this._bolts = [ this._makeBolt(x, yTop, z, 22) ];
+    if (Math.random() > 0.4) {
+      const bx = x + (Math.random() - 0.5) * 20;
+      this._bolts.push(this._makeBolt(bx, yTop - 15, z + (Math.random()-0.5)*10, 14));
+    }
+
+    this._flashLight.position.set(x, yTop * 0.55, z);
     this._phase  = 'flash1';
     this._phaseT = 0;
 
-    // Thunder arrives after distance / 340 m·s⁻¹
     const dist  = Math.sqrt(x * x + z * z);
-    const delay = (dist / 340) * 1000;
-    setTimeout(() => this._onStrike?.(), delay);
+    setTimeout(() => this._onStrike?.(), (dist / 340) * 1000);
   }
+
+  _setBoltVisible(v) { for (const b of this._bolts) b.visible = v; }
 
   _tickFlash(dt) {
     this._phaseT += dt;
     if (this._phase === 'flash1') {
-      this._flashLight.intensity = 18;
-      if (this._bolt) this._bolt.visible = true;
-      if (this._phaseT > 0.06) { this._phase = 'gap'; this._phaseT = 0; }
+      this._flashLight.intensity = 45;
+      this._flashAmb.intensity   = 5.0;
+      this._setBoltVisible(true);
+      if (this._phaseT > 0.18) { this._phase = 'gap'; this._phaseT = 0; }
     } else if (this._phase === 'gap') {
       this._flashLight.intensity = 0;
-      if (this._bolt) this._bolt.visible = false;
-      if (this._phaseT > 0.07) { this._phase = 'flash2'; this._phaseT = 0; }
+      this._flashAmb.intensity   = 0;
+      this._setBoltVisible(false);
+      if (this._phaseT > 0.08) { this._phase = 'flash2'; this._phaseT = 0; }
     } else if (this._phase === 'flash2') {
-      this._flashLight.intensity = 12;
-      if (this._bolt) this._bolt.visible = true;
-      if (this._phaseT > 0.05) { this._phase = 'done'; this._phaseT = 0; }
+      this._flashLight.intensity = 30;
+      this._flashAmb.intensity   = 3.5;
+      this._setBoltVisible(true);
+      if (this._phaseT > 0.14) { this._phase = 'done'; this._phaseT = 0; }
     } else {
       this._flashLight.intensity = 0;
-      if (this._bolt) {
-        this._scene.remove(this._bolt);
-        this._bolt.geometry.dispose();
-        this._bolt.material.dispose();
-        this._bolt = null;
+      this._flashAmb.intensity   = 0;
+      for (const b of this._bolts) {
+        this._scene.remove(b);
+        b.geometry.dispose();
+        b.material.dispose();
       }
+      this._bolts = [];
       this._phase = 'idle';
     }
   }
