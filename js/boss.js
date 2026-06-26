@@ -485,10 +485,12 @@ export class Boss2 {
     this._scene = scene;
     this.spec   = { size: 2.55 };
 
+    // _orbitAngle drives a sine-sweep so the boss stays in the forward arc
     this._orbitAngle   = Math.random() * Math.PI * 2;
-    this._orbitRadius  = 35;
-    this._orbitSpeed   = 0.23; // rad/s — ~8 m/s
+    this._orbitRadius  = 38;
+    this._orbitSpeed   = 0.115; // rad/s phase 1 (~half previous)
     this._orbitHeight  = 12;
+    this._sweepHalf    = 52 * (Math.PI / 180); // ±52° forward arc (matches drone spawn zone)
 
     this._phase           = 1;
     this._vulnerable      = false;
@@ -502,10 +504,11 @@ export class Boss2 {
 
     this.group = new THREE.Group();
     this._buildMesh();
+    const initSweep = Math.sin(this._orbitAngle) * this._sweepHalf;
     this.group.position.set(
-      Math.sin(this._orbitAngle) * this._orbitRadius,
+      Math.sin(initSweep) * this._orbitRadius,
       this._orbitHeight,
-      -Math.cos(this._orbitAngle) * this._orbitRadius
+      -Math.cos(initSweep) * this._orbitRadius
     );
     scene.add(this.group);
   }
@@ -582,11 +585,11 @@ export class Boss2 {
   _updatePhase() {
     if (this.hp <= 100 && this._phase < 3) {
       this._phase         = 3;
-      this._orbitSpeed    = 0.57; // ~20 m/s
+      this._orbitSpeed    = 0.285; // phase 3
       this._vulnerableDur = 4.0;
     } else if (this.hp <= 200 && this._phase < 2) {
       this._phase         = 2;
-      this._orbitSpeed    = 0.37; // ~13 m/s
+      this._orbitSpeed    = 0.185; // phase 2
       this._vulnerableDur = 6.0;
     }
   }
@@ -606,12 +609,13 @@ export class Boss2 {
     this._animTimer += dt;
     this._updatePhase();
 
-    // Continuous orbit around player
+    // Pendulum sweep within the forward drone-spawn arc (±52°)
     this._orbitAngle += this._orbitSpeed * dt;
+    const sweep = Math.sin(this._orbitAngle) * this._sweepHalf;
     this.group.position.set(
-      Math.sin(this._orbitAngle) * this._orbitRadius,
+      Math.sin(sweep) * this._orbitRadius,
       this._orbitHeight + Math.sin(this._orbitAngle * 1.5) * 2.5,
-      -Math.cos(this._orbitAngle) * this._orbitRadius
+      -Math.cos(sweep) * this._orbitRadius
     );
 
     // Eye cluster (+Z) always faces toward player at origin
