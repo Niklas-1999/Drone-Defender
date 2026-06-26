@@ -143,6 +143,7 @@ export class Boss {
     this._zipTarget       = null;
     this._hitFlash        = 0;
     this._animTimer       = 0;
+    this._phase           = 1;    // escalates at 200 HP and 100 HP
 
     this._spots   = this._shuffled();
     this._spotIdx = 0;
@@ -261,10 +262,25 @@ export class Boss {
     return false;
   }
 
+  _updatePhase() {
+    if (this.hp <= 100 && this._phase < 3) {
+      this._phase           = 3;
+      this._hoverDuration   = 2.5;  // -1s from phase 2
+      this._missileInterval = 1.1;  // double rate vs phase 1 (2.2 / 2)
+      if (this._missileTimer > this._missileInterval) this._missileTimer = this._missileInterval;
+    } else if (this.hp <= 200 && this._phase < 2) {
+      this._phase           = 2;
+      this._hoverDuration   = 3.5;  // -1.5s from phase 1
+      this._missileInterval = 1.47; // 50% faster (2.2 / 1.5)
+      if (this._missileTimer > this._missileInterval) this._missileTimer = this._missileInterval;
+    }
+  }
+
   // Returns array of newly spawned Missile objects
   update(dt, targetPos, scene, camera) {
     if (this.dead) return [];
     this._animTimer += dt;
+    this._updatePhase();
     const newMissiles = [];
 
     // ── Visuals ───────────────────────────────────────────────
