@@ -477,8 +477,8 @@ export class ShieldOrb {
 // ── Boss 2 ─────────────────────────────────────────────────────
 export class Boss2 {
   constructor(scene) {
-    this.hp     = 300;
-    this.maxHp  = 300;
+    this.hp     = 240;
+    this.maxHp  = 240;
     this.dead   = false;
     this.kind   = 'boss';
     this.points = 8000;
@@ -499,8 +499,8 @@ export class Boss2 {
     this._hitFlash        = 0;
     this._animTimer       = 0;
 
-    this._missileInterval = 3.5; // seconds between missiles (phase 1)
-    this._missileTimer    = 2.0; // initial delay before first shot
+    this._missileInterval = 4.9; // seconds between missiles (phase 1, -40% rate)
+    this._missileTimer    = 2.5; // initial delay before first shot
 
     this.shields = [];
     for (let i = 0; i < 3; i++) this.shields.push(new ShieldOrb(scene, i, 3));
@@ -586,16 +586,16 @@ export class Boss2 {
   }
 
   _updatePhase() {
-    if (this.hp <= 100 && this._phase < 3) {
-      this._phase         = 3;
+    if (this.hp <= 80 && this._phase < 3) {
+      this._phase           = 3;
       this._orbitSpeed      = 0.285;
       this._vulnerableDur   = 4.0;
-      this._missileInterval = 1.4;
+      this._missileInterval = 2.0;
       if (this._missileTimer > this._missileInterval) this._missileTimer = this._missileInterval;
-    } else if (this.hp <= 200 && this._phase < 2) {
+    } else if (this.hp <= 160 && this._phase < 2) {
       this._phase           = 2;
       this._orbitSpeed      = 0.185;
-      this._missileInterval = 2.2;
+      this._missileInterval = 3.1;
       if (this._missileTimer > this._missileInterval) this._missileTimer = this._missileInterval;
       this._vulnerableDur = 6.0;
     }
