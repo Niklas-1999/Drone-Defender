@@ -600,7 +600,7 @@ export class Boss2 {
     if (this.hp <= 80 && this._phase < 3) {
       this._phase           = 3;
       this._orbitSpeed      = 0.285;
-      this._missileInterval = 2.0;
+      this._missileInterval = 2.6;
       if (this._missileTimer > this._missileInterval) this._missileTimer = this._missileInterval;
       this._startShieldPhase(4);
     } else if (this.hp <= 160 && this._phase < 2) {
