@@ -358,7 +358,7 @@ export class Game {
 
       ctx.fillStyle = '#aaffcc';
       ctx.font = '20px monospace';
-      ctx.fillText('All 18 waves cleared!', W / 2, 108);
+      ctx.fillText('All 12 waves cleared!', W / 2, 108);
 
       ctx.fillStyle = '#ffffff';
       ctx.font = '30px monospace';
@@ -1089,9 +1089,9 @@ export class Game {
   _buildCheatMenu() {
     // Wave label → internal wave number mapping
     const sections = [
-      { label: 'DAY',     color: '#87ceeb', waves: [['W1',1],['W2',2],['W3',3],['W4',4],['W5',5],['BOSS 1',6]] },
-      { label: 'EVENING', color: '#f07030', waves: [['W6',7],['W7',8],['W8',9],['W9',10],['W10',11],['BOSS 2',12]] },
-      { label: 'NIGHT',   color: '#44aaff', waves: [['W11',13],['W12',14],['W13',15],['W14',16],['W15',17],['BOSS 3',18]] },
+      { label: 'DAY',     color: '#87ceeb', waves: [['1-1',1],['1-2',2],['1-3',3],['BOSS 1',4]] },
+      { label: 'EVENING', color: '#f07030', waves: [['2-1',5],['2-2',6],['2-3',7],['BOSS 2',8]] },
+      { label: 'NIGHT',   color: '#44aaff', waves: [['3-1',9],['3-2',10],['3-3',11],['BOSS 3',12]] },
     ];
 
     const panel = document.createElement('div');
@@ -1290,9 +1290,9 @@ export class Game {
     this._cheatVRBtnZones = [];
 
     const sections = [
-      { label:'DAY',     color:'#87ceeb', y: 88, waves:[['W1',1],['W2',2],['W3',3],['W4',4],['W5',5],['BOSS 1',6]] },
-      { label:'EVENING', color:'#f07030', y:168, waves:[['W6',7],['W7',8],['W8',9],['W9',10],['W10',11],['BOSS 2',12]] },
-      { label:'NIGHT',   color:'#44aaff', y:248, waves:[['W11',13],['W12',14],['W13',15],['W14',16],['W15',17],['BOSS 3',18]] },
+      { label:'DAY',     color:'#87ceeb', y: 88, waves:[['1-1',1],['1-2',2],['1-3',3],['BOSS 1',4]] },
+      { label:'EVENING', color:'#f07030', y:168, waves:[['2-1',5],['2-2',6],['2-3',7],['BOSS 2',8]] },
+      { label:'NIGHT',   color:'#44aaff', y:248, waves:[['3-1',9],['3-2',10],['3-3',11],['BOSS 3',12]] },
     ];
 
     const LX=18, LW=78, BTN_W=118, BTN_H=58, GAP=6;
