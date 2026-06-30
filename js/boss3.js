@@ -36,8 +36,8 @@ const mkMesh    = (geo, mat) => new THREE.Mesh(geo, mat);
 // ── Boss3Rocket ──────────────────────────────────────────────────
 export class Boss3Rocket {
   constructor(fromPos, targetPos, scene) {
-    this.hp     = 20;
-    this.maxHp  = 20;
+    this.hp     = 10;
+    this.maxHp  = 10;
     this.dead   = false;
     this.kind   = 'missile';
     this.damage = 35;

@@ -15,8 +15,8 @@ const BOSS_SPOTS = [
 // ── Missile ────────────────────────────────────────────────────
 export class Missile {
   constructor(fromPos, targetPos, scene) {
-    this.hp     = 10;
-    this.maxHp  = 10;
+    this.hp     = 5;
+    this.maxHp  = 5;
     this.dead   = false;
     this.kind   = 'missile';
     this.damage = 25;
@@ -128,8 +128,8 @@ export class Missile {
 // ── Boss ───────────────────────────────────────────────────────
 export class Boss {
   constructor(scene) {
-    this.hp     = 300;
-    this.maxHp  = 300;
+    this.hp     = 210;
+    this.maxHp  = 210;
     this.dead   = false;
     this.kind   = 'boss';
     this.points = 5000;
