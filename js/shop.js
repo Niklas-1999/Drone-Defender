@@ -8,9 +8,13 @@ const UPGRADES = [
     cost: l => 50 + l * 30, maxLevel: 5,
     apply(game, lvl) { game.turret.setMaxAmmo(50 + lvl * 15); } },
 
-  { id: 'fire_rate',   col: 0, row: 1, name: 'FIRE RATE',     desc: '+25% speed / level',
+  { id: 'fire_rate',    col: 0, row: 1, name: 'FIRE RATE',     desc: '+25% speed / level',
     cost: l => 75 + l * 40, maxLevel: 5,
     apply(game, lvl) { game.turret.setFireCooldown(0.20 * Math.pow(0.80, lvl)); } },
+
+  { id: 'reload_speed', col: 0, row: 2, name: 'RELOAD SPEED',  desc: '-0.5s reload / level\nMax: instant (0s)',
+    cost: l => 80 + l * 45, maxLevel: 4,
+    apply(game, lvl) { game.turret.setReloadDur(Math.max(0, 2.0 - lvl * 0.5)); } },
 
   // TURRET (column 1)
   { id: 'turret_l',    col: 1, row: 0, name: 'AUTO TURRET L', desc: 'Left auto-targeting turret',
@@ -324,16 +328,16 @@ export class ShopSystem {
   // Map keyboard keys 1-9 to upgrade id or 'continue' for 0
   keyToId(key) {
     const map = [
-      null,           // 0 = continue (handled separately)
-      'ammo_cap',    // 1
-      'fire_rate',   // 2
-      null,          // 3 (gap in gun column)
-      'turret_l',    // 4
-      'turret_r',    // 5
-      'turret_rate', // 6
-      'buy_emp',     // 7
-      'emp_cd',      // 8
-      'emp_stun',    // 9
+      null,            // 0 = continue (handled separately)
+      'ammo_cap',     // 1
+      'fire_rate',    // 2
+      'reload_speed', // 3
+      'turret_l',     // 4
+      'turret_r',     // 5
+      'turret_rate',  // 6
+      'buy_emp',      // 7
+      'emp_cd',       // 8
+      'emp_stun',     // 9
     ];
     const n = parseInt(key);
     if (n === 0) return 'continue';

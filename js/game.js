@@ -17,11 +17,11 @@ import { Boss3, Boss3Part, Boss3Rocket }   from './boss3.js';
 // Money awarded per drone kill by type
 const KILL_MONEY = { scout: 10, warrior: 20, titan: 30 };
 
-// Wave structure: 18 total, boss waves at 6, 12, 18
-const MAX_WAVE  = 18;
-const BOSS_WAVES = new Set([6, 12, 18]);
+// Wave structure: 12 total (3 normal + 1 boss per cycle × 3 cycles)
+const MAX_WAVE   = 12;
+const BOSS_WAVES = new Set([4, 8, 12]);
 
-// Period boundaries: 1-6 day, 7-12 evening, 13-18 night
+// Period boundaries: 1-4 day, 5-8 evening, 9-12 night
 const MUSIC_VOL = 0.55;
 
 export class Game {
@@ -386,23 +386,25 @@ export class Game {
   _isBossWave(w)  { return BOSS_WAVES.has(w); }
 
   _getPeriod(w) {
-    if (w <= 6)  return 'day';
-    if (w <= 12) return 'evening';
+    if (w <= 4)  return 'day';
+    if (w <= 8)  return 'evening';
     return 'night';
   }
 
   // Human-readable wave label for the HUD / announcer
   _waveLabel(w) {
-    if (this._isBossWave(w)) return 'BOSS WAVE';
-    const bossCount = [6, 12, 18].filter(b => b < w).length;
-    return `WAVE  ${w - bossCount}`;
+    const cycle = Math.ceil(w / 4);
+    if (this._isBossWave(w)) return `BOSS ${cycle}`;
+    const sub = ((w - 1) % 4) + 1;
+    return `${cycle}-${sub}`;
   }
 
   // Number (or 'BOSS') shown in the wave HUD counter
   _waveDisplay(w) {
+    const cycle = Math.ceil(w / 4);
     if (this._isBossWave(w)) return 'BOSS';
-    const bossCount = [6, 12, 18].filter(b => b < w).length;
-    return w - bossCount;
+    const sub = ((w - 1) % 4) + 1;
+    return `${cycle}-${sub}`;
   }
 
   // ── Start / restart ───────────────────────────────────────────
@@ -447,7 +449,8 @@ export class Game {
     // Reset turret stats
     this.turret.setMaxAmmo(50);
     this.turret.setFireCooldown(0.20);
-    this.turret.reload();
+    this.turret.setReloadDur(2.0);
+    this.turret.reload(true);
     this._emptyGunPlayed = false;
 
     this._infoPanel.visible = false;
@@ -515,7 +518,7 @@ export class Game {
   _startNextWave() {
     this.wave++;
 
-    // After all 18 waves completed → win
+    // After all 12 waves completed → win
     if (this.wave > MAX_WAVE) { this._win(); return; }
 
     const newPeriod  = this._getPeriod(this.wave);
@@ -548,9 +551,9 @@ export class Game {
       // Clear any stale wave state so isComplete() stays true (no drone spawns)
       this.waves.startBossWave(); // sets config=[] → completes instantly
       // Spawn the correct boss by wave number
-      this._boss = this.wave === 6  ? new Boss(this.scene)  :
-                   this.wave === 12 ? new Boss2(this.scene) :
-                   this.wave === 18 ? new Boss3(this.scene) :
+      this._boss = this.wave === 4  ? new Boss(this.scene)  :
+                   this.wave === 8  ? new Boss2(this.scene) :
+                   this.wave === 12 ? new Boss3(this.scene) :
                    new Boss(this.scene);
       this._bossMissiles = [];
       // Show desktop HP bar
@@ -772,17 +775,23 @@ export class Game {
 
     // ── Full-auto shooting ────────────────────────────────────
     if (isFiring) {
-      if (this.turret.getAmmo() === 0) {
+      if (this.turret.isEmpty()) {
         if (!this._emptyGunPlayed) {
           this.audio.emptyGun();
           this._emptyGunPlayed = true;
         }
-      } else {
+      } else if (!this.turret.isReloading()) {
         const shot = this.turret.fire(this.vrMode, this.audio);
         if (shot) this.projectiles.firePlayer(shot.muzzlePos, shot.aimDir);
       }
     } else {
       this._emptyGunPlayed = false;
+    }
+
+    // Auto-reload when magazine is empty
+    if (this.turret.isEmpty()) {
+      this.turret.reload();
+      this.audio.gunReload();
     }
 
     // ── Reload ────────────────────────────────────────────────
@@ -1192,7 +1201,7 @@ export class Game {
     this.emp.unlocked = false; this.emp.cooldownMax = 15;
     this.emp.stunDuration = 1.0; this.emp._cooldownT = 0;
     this.turret.setMaxAmmo(50); this.turret.setFireCooldown(0.20);
-    this.turret.reload(); this._emptyGunPlayed = false;
+    this.turret.reload(true); this._emptyGunPlayed = false;
 
     this._infoPanel.visible = false;
     this._panelBtnHovered   = false;
@@ -1380,7 +1389,7 @@ export class Game {
 
   _cheatAllUpgrades() {
     this.money = Math.max(this.money, 9999);
-    const ids = ['ammo_cap','fire_rate','turret_l','turret_r','turret_rate','buy_emp','emp_cd','emp_stun'];
+    const ids = ['ammo_cap','fire_rate','reload_speed','turret_l','turret_r','turret_rate','buy_emp','emp_cd','emp_stun'];
     for (const id of ids) {
       const upg = this.shop.getUpgrade(id);
       if (!upg) continue;

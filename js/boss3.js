@@ -309,6 +309,11 @@ export class Boss3 {
 
     this._animTimer = 0;
 
+    // Drop animations (arms on shoulder death; body on neck death)
+    this._droppingArms = [];
+    this._bodyDropping = false;
+    this._bodyDropVy   = 0;
+
     // Rise-from-ground animation state
     this._rising     = true;
     this._riseT      = 0;
@@ -392,7 +397,7 @@ export class Boss3 {
 
     // Head group (detaches in phase 3)
     this._headGroup = new THREE.Group();
-    this._headGroup.position.set(0, 42, 0);
+    this._headGroup.position.set(0, 40, 0);
     this._robotGroup.add(this._headGroup);
 
     // Head — large octahedron matches Boss-1 DNA
@@ -438,7 +443,7 @@ export class Boss3 {
     // Firing positions in world space (robot final rest position)
     this._leftHandPos  = new THREE.Vector3(RX - 12, RY + 4,    RZ + 10);
     this._rightHandPos = new THREE.Vector3(RX + 12, RY + 4,    RZ + 10);
-    this._mouthPos     = new THREE.Vector3(RX,      RY + 39.8, RZ + 5.1);
+    this._mouthPos     = new THREE.Vector3(RX,      RY + 37.8, RZ + 5.1);
 
     // Multiple PointLights to illuminate the giant body at night
     const lightDefs = [
@@ -549,13 +554,13 @@ export class Boss3 {
   }
 
   _onShoulderDown(shoulder) {
+    const armGroup = shoulder === this.leftShoulder ? this._leftArmGroup : this._rightArmGroup;
     if (shoulder === this.leftShoulder) {
       this._canFireLeft = false;
-      this._robotGroup.remove(this._leftArmGroup);
     } else {
       this._canFireRight = false;
-      this._robotGroup.remove(this._rightArmGroup);
     }
+    this._droppingArms.push({ group: armGroup, vy: 0 });
     this.parts = this.parts.filter(p => !p.dead);
     if (this.leftShoulder.dead && this.rightShoulder.dead) this._enterPhase2();
   }
@@ -578,11 +583,12 @@ export class Boss3 {
     this.group.add(this._headGroup);
     this._headGroup.position.set(0, 0, 0);
 
-    // boss.group world position = where the head was (robot at y=0, head local y=42)
-    this.group.position.set(RX, RY + 42, RZ);
+    // boss.group world position = where the head was
+    this.group.position.set(RX, RY + 40, RZ);
 
-    // Robot body disappears
-    this._scene.remove(this._robotGroup);
+    // Animate body dropping instead of instant remove
+    this._bodyDropping = true;
+    this._bodyDropVy   = 0;
 
     // Two shield orbs
     this.shields = [
@@ -590,10 +596,11 @@ export class Boss3 {
       new ShieldOrb(this._scene, 1, 2),
     ];
 
-    // Reset hover-zip
-    this._spots      = shuffled(HEAD_SPOTS);
-    this._spotIdx    = 0;
-    this._moveState  = 'hovering';
+    // Start immediately zipping toward the player (first spot in combat zone)
+    this._spots     = shuffled(HEAD_SPOTS);
+    this._spotIdx   = 0;
+    this._moveState = 'zipping';
+    this._zipTarget = this._spots[0].clone();
     this._hoverTimer = 0;
 
     this._p3Bar.visible   = true;
@@ -640,6 +647,22 @@ export class Boss3 {
       return [];
     }
 
+    // Animate falling arms (after shoulder destruction)
+    for (const a of this._droppingArms) {
+      a.vy += 22 * dt;
+      a.group.position.y -= a.vy * dt;
+    }
+
+    // Animate falling body (after neck destruction)
+    if (this._bodyDropping) {
+      this._bodyDropVy += 18 * dt;
+      this._robotGroup.position.y -= this._bodyDropVy * dt;
+      if (this._robotGroup.position.y < -80) {
+        this._scene.remove(this._robotGroup);
+        this._bodyDropping = false;
+      }
+    }
+
     // Core pulse (phases 1&2)
     if (this.phase < 3 && this._coreGlow) {
       const s = 0.85 + 0.15 * Math.sin(this._animTimer * 5);
@@ -682,17 +705,14 @@ export class Boss3 {
     return rockets;
   }
 
-  // Phase 2 — 3-rocket spread from mouth ───────────────────────
+  // Phase 2 — single rocket from mouth ────────────────────────
 
   _phase2(dt, playerPos, scene) {
     const rockets = [];
     this._missileTimer -= dt;
     if (this._missileTimer <= 0) {
       this._missileTimer = this._missileInterval;
-      for (let i = -1; i <= 1; i++) {
-        const target = playerPos.clone().add(new THREE.Vector3(i * 3.5, 0, 0));
-        rockets.push(new Boss3Rocket(this._mouthPos.clone(), target, scene));
-      }
+      rockets.push(new Boss3Rocket(this._mouthPos.clone(), playerPos.clone(), scene));
     }
     return rockets;
   }
@@ -779,7 +799,7 @@ export class Boss3 {
 
   destroy() {
     this.dead = true;
-    this._scene.remove(this._robotGroup);
+    if (this._robotGroup?.parent) this._scene.remove(this._robotGroup);
     this._scene.remove(this.group);
     this.leftShoulder?.destroy();
     this.rightShoulder?.destroy();

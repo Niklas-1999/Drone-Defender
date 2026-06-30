@@ -19,6 +19,9 @@ export class Turret {
     this._spinVel         = 0;
     this._ammo            = 50;
     this._maxAmmo         = 50;
+    this._reloading       = false;
+    this._reloadT         = 0;
+    this._reloadDur       = 2.0;
 
     this._build();
   }
@@ -211,6 +214,15 @@ export class Turret {
   update(dt, vrMode, input, isFiring = false) {
     this._lastInput = input;
 
+    if (this._reloading) {
+      this._reloadT += dt;
+      if (this._reloadT >= this._reloadDur) {
+        this._reloading = false;
+        this._reloadT   = 0;
+        this._ammo      = this._maxAmmo;
+      }
+    }
+
     if (this._fireCooldown > 0) this._fireCooldown -= dt;
     if (this._flashTimer   > 0) {
       this._flashTimer -= dt;
@@ -265,6 +277,7 @@ export class Turret {
 
   // ── Fire ──────────────────────────────────────────────────────
   fire(vrMode, audio) {
+    if (this._reloading) return null;
     if (this._fireCooldown > 0) return null;
     if (vrMode && !this._grabbed) return null;
     if (this._ammo <= 0) return null;
@@ -294,16 +307,34 @@ export class Turret {
   }
 
   // ── Ammo & upgrade API ────────────────────────────────────────
-  getAmmo()    { return this._ammo; }
-  getMaxAmmo() { return this._maxAmmo; }
-  reload()     { this._ammo = this._maxAmmo; }
+  getAmmo() {
+    if (this._reloading && this._reloadDur > 0)
+      return Math.floor((this._reloadT / this._reloadDur) * this._maxAmmo);
+    return this._ammo;
+  }
+  getMaxAmmo()  { return this._maxAmmo; }
+  isEmpty()     { return !this._reloading && this._ammo <= 0; }
+  isReloading() { return this._reloading; }
+
+  reload(force = false) {
+    if (force) {
+      this._reloading = false; this._reloadT = 0; this._ammo = this._maxAmmo;
+    } else if (!this._reloading) {
+      if (this._reloadDur <= 0) {
+        this._ammo = this._maxAmmo;
+      } else {
+        this._reloading = true; this._reloadT = 0; this._ammo = 0;
+      }
+    }
+  }
 
   setMaxAmmo(n) {
     this._maxAmmo = n;
-    if (this._ammo > n) this._ammo = n;
+    if (!this._reloading && this._ammo > n) this._ammo = n;
   }
 
   setFireCooldown(n) { this._fireCooldownMax = n; }
+  setReloadDur(n)    { this._reloadDur = Math.max(0, n); }
   getFireRate()      { return Math.round(1 / this._fireCooldownMax * 10) / 10; }
 
   // ── Helpers ───────────────────────────────────────────────────
