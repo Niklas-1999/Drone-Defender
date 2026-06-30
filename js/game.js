@@ -159,6 +159,9 @@ export class Game {
       night:   make('Neon Skyline Clash.mp3', 'Neon Skyline Clash 2.mp3'),
     };
 
+    this._victoryMusic = new Audio('assets/Music/Victory.mp3');
+    this._victoryMusic.volume = 0;
+
     // When a track ends, automatically cycle to the other in the same period
     for (const [period, [t0, t1]] of Object.entries(this._musicGroups)) {
       t0.addEventListener('ended', () => {
@@ -197,6 +200,20 @@ export class Game {
   }
 
   _stopMusic() { this._stopAllMusic(); }
+
+  _playVictoryMusic() {
+    this._stopAllMusic();
+    this._victoryMusic.currentTime = 0;
+    this._victoryMusic.volume = MUSIC_VOL;
+    this._victoryMusic.play().catch(() => {});
+  }
+
+  _stopVictoryMusic() {
+    if (!this._victoryMusic) return;
+    this._victoryMusic.pause();
+    this._victoryMusic.currentTime = 0;
+    this._victoryMusic.volume = 0;
+  }
 
   _switchMusicPeriod(newPeriod) {
     if (newPeriod === this._musicPeriod) return;
@@ -446,6 +463,8 @@ export class Game {
     this.emp.stunDuration = 1.0;
     this.emp._cooldownT   = 0;
 
+    this._stopVictoryMusic();
+
     // Reset turret stats
     this.turret.setMaxAmmo(50);
     this.turret.setFireCooldown(0.20);
@@ -581,7 +600,7 @@ export class Game {
     const hpBar = document.getElementById('boss-hp-bar');
     if (hpBar) hpBar.style.display = 'none';
     if (this.input.mouseLocked) document.exitPointerLock();
-    this._stopMusic();
+    this._playVictoryMusic();
     this._fireworkTimer = 0;
     this._drawInfoPanel('win', this.score, this.wave);
     this._infoPanel.visible = true;

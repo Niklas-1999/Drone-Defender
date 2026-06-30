@@ -128,8 +128,8 @@ export class Missile {
 // ── Boss ───────────────────────────────────────────────────────
 export class Boss {
   constructor(scene) {
-    this.hp     = 210;
-    this.maxHp  = 210;
+    this.hp     = 126;
+    this.maxHp  = 126;
     this.dead   = false;
     this.kind   = 'boss';
     this.points = 5000;
@@ -265,15 +265,15 @@ export class Boss {
   }
 
   _updatePhase() {
-    if (this.hp <= 100 && this._phase < 3) {
+    if (this.hp <= 60 && this._phase < 3) {
       this._phase           = 3;
-      this._hoverDuration   = 2.5;  // -1s from phase 2
-      this._missileInterval = 1.1;  // double rate vs phase 1 (2.2 / 2)
+      this._hoverDuration   = 2.5;
+      this._missileInterval = 1.1;
       if (this._missileTimer > this._missileInterval) this._missileTimer = this._missileInterval;
-    } else if (this.hp <= 200 && this._phase < 2) {
+    } else if (this.hp <= 120 && this._phase < 2) {
       this._phase           = 2;
-      this._hoverDuration   = 3.5;  // -1.5s from phase 1
-      this._missileInterval = 1.47; // 50% faster (2.2 / 1.5)
+      this._hoverDuration   = 3.5;
+      this._missileInterval = 1.47;
       if (this._missileTimer > this._missileInterval) this._missileTimer = this._missileInterval;
     }
   }
@@ -371,7 +371,7 @@ export class Boss {
 
 // ── ShieldOrb (Boss 2) ─────────────────────────────────────────
 export class ShieldOrb {
-  constructor(scene, orbitIndex, numOrbs) {
+  constructor(scene, orbitIndex, numOrbs, orbitRadius = 3.5) {
     this.hp     = 3;
     this.maxHp  = 3;
     this.dead   = false;
@@ -379,7 +379,7 @@ export class ShieldOrb {
     this._scene = scene;
     this.spec   = { size: 0.35 };
     this._orbitAngle  = (orbitIndex / numOrbs) * Math.PI * 2;
-    this._orbitRadius = 3.5;
+    this._orbitRadius = orbitRadius;
     this._orbitSpeed  = 1.1;
     this._hitFlash    = 0;
 

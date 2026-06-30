@@ -560,6 +560,7 @@ export class Boss3 {
     } else {
       this._canFireRight = false;
     }
+    shoulder.destroy(); // remove hitbox rings from scene
     this._droppingArms.push({ group: armGroup, vy: 0 });
     this.parts = this.parts.filter(p => !p.dead);
     if (this.leftShoulder.dead && this.rightShoulder.dead) this._enterPhase2();
@@ -590,10 +591,13 @@ export class Boss3 {
     this._bodyDropping = true;
     this._bodyDropVy   = 0;
 
-    // Two shield orbs
+    // Destroy neck hitbox rings
+    if (this.neck) this.neck.destroy();
+
+    // Two shield orbs — orbit radius 9.0 puts them well outside the 6.5-radius dome
     this.shields = [
-      new ShieldOrb(this._scene, 0, 2),
-      new ShieldOrb(this._scene, 1, 2),
+      new ShieldOrb(this._scene, 0, 2, 9.0),
+      new ShieldOrb(this._scene, 1, 2, 9.0),
     ];
 
     // Start immediately zipping toward the player (first spot in combat zone)
